@@ -36,7 +36,7 @@ return view.extend({
   ]).then(([board, info, nets, devices, leases, count]) => {
    const wan = nets.find(net => (net.route || []).some(route => route.target === '0.0.0.0' && route.mask === 0));
    const device = wan?.l3_device, stats = devices[device]?.stats, now = performance.now();
-   const sameDevice = this.previous?.device === device;
+   const sameDevice = this.previous != null && this.previous.device === device;
    const dt = this.previous ? (now - this.previous.time) / 1000 : 0;
    this.history.push({ rx: sameDevice ? RouterDeck.rate(this.previous.rx, stats?.rx_bytes, dt) : null, tx: sameDevice ? RouterDeck.rate(this.previous.tx, stats?.tx_bytes, dt) : null });
    this.history = this.history.slice(-60);
