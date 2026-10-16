@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-darkmode="true">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light">
+ <title>RouterDeck · Local preview</title>
+ <script src="/luci-static/routerdeck/appearance.js"></script>
+ <link rel="icon" href="/luci-static/routerdeck/mark.svg" type="image/svg+xml">
+ <link rel="stylesheet" href="/luci-static/routerdeck/components.css">
+ <link rel="stylesheet" href="/luci-static/routerdeck/routerdeck.css">
+ <script src="/luci-static/routerdeck/core.js"></script>
+ <script src="/luci-static/routerdeck/dashboard.js"></script>
+<link rel="stylesheet" href="/luci-static/routerdeck/workspace.css">
+<script defer src="/luci-static/routerdeck/workspace.js"></script>
+</head>
+<body class="routerdeck">
+ <a class="rd-skip" href="#maincontent">Skip to content</a>
+ <aside class="rd-sidebar" id="rd-sidebar" aria-label="Main navigation">
+  <a class="rd-brand" href="#dashboard"><img src="/luci-static/routerdeck/mark.svg" alt="" width="30" height="30"><span>RouterDeck<small>NETWORK CONSOLE</small></span></a>
+  <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" type="search" placeholder="Find a page…" aria-label="Find a page"><kbd>⌘ K</kbd></label>
+  <nav id="rd-navigation"></nav>
+  <div class="rd-sidebar-foot"><span class="rd-dot"></span><span>Local preview<small>LuCI · RouterDeck 0.1</small></span></div>
+ </aside>
+ <button type="button" class="rd-backdrop" id="rd-backdrop" aria-label="Close navigation" hidden></button>
+ <header class="rd-topbar">
+  <button type="button" class="rd-icon-button rd-mobile-toggle" id="rd-menu-toggle" aria-label="Toggle navigation" aria-controls="rd-sidebar" aria-expanded="false">☰</button>
+  <div class="rd-device"><span class="rd-device-icon" aria-hidden="true">▤</span><strong>routerdeck-lab</strong><span class="rd-firmware">OpenWrt 25.12 · Simulated device</span></div>
+  <div class="rd-header-stats"><span><small>Uptime</small><strong>12d 8h</strong></span><span><small>Load</small><strong>0.12</strong></span><span><small>RAM</small><strong>28%</strong></span><span><small>WAN</small><strong>Up</strong></span></div>
+  <button type="button" class="rd-icon-button" data-theme-toggle aria-label="Switch to light theme">☼</button>
+ </header>
+ <main id="maincontent" class="container rd-main" tabindex="-1">
+  <div class="rd-demo-notice"><strong>PREVIEW</strong><span>Simulated data. Changes stay in this browser; no router is connected.</span></div>
+  <div id="preview-view"></div>
+ </main>
+ <footer class="rd-footer"><span>RouterDeck <span class="rd-muted">/</span> Development preview</span><span>Local only · 0.1.0</span></footer>
+ <script src="/preview/src/app.js"></script>
+</body>
+</html>

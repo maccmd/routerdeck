@@ -1,0 +1,8 @@
+{
+ "admin/status/dashboard": {
+  "title": "Dashboard",
+  "order": 0,
+  "action": { "type": "view", "path": "routerdeck/dashboard" },
+  "depends": { "acl": ["luci-mod-status-index"] }
+ }
+}

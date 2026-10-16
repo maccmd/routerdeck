@@ -1,0 +1,59 @@
+{#
+ RouterDeck, Copyright 2026 RouterDeck contributors. Apache-2.0.
+ LuCI integration adapted from Bootstrap header.ut:
+ Copyright 2008 Steven Barth, 2012 David Menting,
+ 2008-2022 Jo-Philipp Wich. Apache-2.0.
+-#}
+{%
+ import { getuid, getspnam } from 'luci.core';
+ const boardinfo = ubus.call('system', 'board') ?? {};
+ http.prepare_content('text/html; charset=UTF-8');
+-%}
+<!DOCTYPE html>
+<html lang="{{ dispatcher.lang }}" data-theme="dark" data-darkmode="true">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="color-scheme" content="dark light">
+ <meta name="darkreader-lock">
+ <title>{{ striptags(`${boardinfo.hostname ?? 'OpenWrt'} | ${dispatched?.title ?? 'RouterDeck'}`) }}</title>
+ <script src="{{ media }}/appearance.js?v=0.1.0-{{ pkgs_update_time }}"></script>
+ <link rel="stylesheet" href="/luci-static/bootstrap/cascade.css">
+ <link rel="stylesheet" href="{{ media }}/components.css?v=0.1.0-{{ pkgs_update_time }}" data-rd-components>
+ <link rel="stylesheet" href="{{ media }}/routerdeck.css?v=0.1.0-{{ pkgs_update_time }}">
+ <link rel="icon" href="{{ media }}/mark.svg" type="image/svg+xml">
+ {% if (node?.css): %}<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">{% endif %}
+ {% if (css): %}<style>{{ css }}</style>{% endif %}
+ <script src="{{ dispatcher.build_url('admin/translations', dispatcher.lang) }}"></script>
+ <script src="{{ resource }}/cbi.js"></script>
+ <script src="{{ media }}/core.js?v=0.1.0-{{ pkgs_update_time }}"></script>
+</head>
+<body class="routerdeck lang_{{ dispatcher.lang }}{% if (blank_page): %} rd-login{% endif %}" data-page="{{ entityencode(join('-', ctx.request_path), true) }}">
+{% if (!blank_page): %}
+ <a class="rd-skip" href="#maincontent">{{ _('Skip to content') }}</a>
+ <aside class="rd-sidebar" id="rd-sidebar" aria-label="{{ _('Main navigation') }}">
+  <a class="rd-brand" href="{{ dispatcher.build_url('admin') }}"><img src="{{ media }}/mark.svg" alt="" width="30" height="30"><span>RouterDeck<small>NETWORK CONSOLE</small></span></a>
+  <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" type="search" placeholder="{{ _('Find a page…') }}" aria-label="{{ _('Find a page') }}"><kbd>⌘ K</kbd></label>
+  <nav id="rd-navigation"><p class="rd-muted">{{ _('Loading navigation…') }}</p></nav>
+  <div class="rd-sidebar-foot"><span class="rd-dot"></span><span>{{ _('Local management') }}<small>LuCI · RouterDeck 0.1</small></span></div>
+ </aside>
+ <button type="button" class="rd-backdrop" id="rd-backdrop" aria-label="{{ _('Close navigation') }}" hidden></button>
+ <header class="rd-topbar">
+  <button type="button" class="rd-icon-button rd-mobile-toggle" id="rd-menu-toggle" aria-label="{{ _('Toggle navigation') }}" aria-controls="rd-sidebar" aria-expanded="false">☰</button>
+  <div class="rd-device"><span class="rd-device-icon" aria-hidden="true">▤</span><strong>{{ striptags(boardinfo.hostname ?? 'OpenWrt') }}</strong><span class="rd-firmware">{{ striptags(boardinfo.release?.description ?? 'OpenWrt') }}</span></div>
+  <div class="rd-header-stats" id="rd-header-stats" aria-label="{{ _('System status') }}"></div>
+  <div id="indicators"></div>
+  <button type="button" class="rd-icon-button" data-theme-toggle aria-label="{{ _('Switch to light theme') }}" title="{{ _('Switch theme') }}">◐</button>
+ </header>
+ <main id="maincontent" class="container rd-main" tabindex="-1">
+  {% if (getuid() == 0 && getspnam('root')?.pwdp === ''): %}
+  <div class="alert-message warning"><h4>{{ _('No password set!') }}</h4><p>{{ _('Please configure a root password to protect the web interface.') }}</p>
+   {% if (dispatcher.lookup('admin/system/admin')): %}<a class="btn" href="{{ dispatcher.build_url('admin/system/admin') }}">{{ _('Go to password configuration...') }}</a>{% endif %}
+  </div>
+  {% endif %}
+  {% if (boardinfo.rootfs_type == 'initramfs'): %}
+  <div class="alert-message warning"><h4>{{ _('System running in recovery (initramfs) mode.') }}</h4><p>{{ _('Changes will be lost after rebooting.') }}</p></div>
+  {% endif %}
+  <noscript><div class="alert-message warning">{{ _('You must enable JavaScript in your browser or LuCI will not work properly.') }}</div></noscript>
+  <div id="tabmenu" style="display:none"></div>
+{% endif %}

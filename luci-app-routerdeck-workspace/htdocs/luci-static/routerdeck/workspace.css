@@ -1,0 +1,28 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.rd-workspace { --rd-w-border:#526277; --rd-w-bg:#1b222c; --rd-w-text:#e6edf5; color:var(--rd-w-text); }
+html[data-theme="light"] .rd-workspace,html:not([data-theme]) .rd-workspace { --rd-w-border:#bdc9d8; --rd-w-bg:#f1f4f8; --rd-w-text:#182536; }
+.rd-workspace h2 { margin:0 0 8px; color:var(--rd-w-text); }
+.rd-workspace-note { color:var(--rd-muted,#a1aebf); margin-bottom:12px; max-width:100ch; font-size:12px; }
+.rd-workspace-tools { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.rd-workspace-tools select { max-width:100%; flex:1; min-width:180px; }
+.rd-workspace button { cursor:pointer; }
+.rd-workspace-stage { height:calc(100vh - 280px); min-height:420px; position:relative; overflow:hidden; border:1px solid var(--rd-w-border); border-radius:5px; background:var(--rd-w-bg); }
+.rd-workspace-empty { padding:32px; color:var(--rd-muted,#a1aebf); }
+.rd-window { position:absolute; display:flex; flex-direction:column; border:1px solid var(--rd-w-border); border-radius:5px; overflow:hidden; background:var(--rd-w-bg); box-shadow:0 6px 20px #0003; min-width:280px; min-height:200px; max-width:100%; max-height:100%; resize:both; }
+.rd-window[hidden] { display:none; }
+.rd-window.rd-window-active { border-color:var(--rd-accent,#4da8ff); }
+.rd-window-titlebar { display:flex; align-items:center; gap:4px; padding:5px; background:var(--rd-w-bg); flex:none; }
+.rd-window-title { color:var(--rd-w-text); flex:1; border:0; background:transparent; cursor:move!important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; min-width:0; padding:4px; font-size:12px; touch-action:none; }
+.rd-window-titlebar > button:not(.rd-window-title) { color:var(--rd-w-text); background:transparent; border:1px solid var(--rd-w-border); border-radius:3px; min-width:26px; height:25px; padding:0 4px; }
+.rd-window iframe { border:0; width:100%; flex:1; min-height:0; background:var(--rd-w-bg); }
+.rd-window-moving iframe { pointer-events:none; }
+.rd-window-stale { color:#f0b75a; font-size:11px; padding:4px 8px; }
+.rd-window-status { color:var(--rd-muted,#a1aebf); font-size:10px; padding:2px 8px; }
+.rd-taskbar { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.rd-taskbar button { color:var(--rd-w-text); background:var(--rd-w-bg); border:1px solid var(--rd-w-border); border-radius:4px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:5px 8px; font-size:11px; }
+.rd-taskbar button[aria-pressed="true"] { border-color:var(--rd-accent,#4da8ff); }
+@media(max-width:760px) {
+ .rd-workspace-stage { min-height:520px; height:calc(100vh - 320px); }
+ .rd-window { inset:0!important; width:100%!important; height:100%!important; resize:none; min-width:0; border:0; }
+ .rd-window-titlebar > [data-action="maximize"] { display:none; }
+}

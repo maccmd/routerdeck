@@ -1,0 +1,16 @@
+{
+ "25.12.5": {
+  "series": "25.12", "format": "apk", "cache": "vm", "http": 8088, "ssh": 2222, "subnet": "192.168.77",
+  "kernel": "8cf43c4901efae72b0a04bb655158e03335067e8757926bca4c81d5c952aca51",
+  "rootfs": "03172dd9a91e7cb477ab73bcb5de544bfe19f42698d7f66d9b2bb80ca692eaa6",
+  "sdk": "openwrt-sdk-25.12.5-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+  "sdk_sha256": "1b0316604a3e820b2b008a1baff3f9dac6716af942bef800930e58c7de98c98b"
+ },
+ "24.10.8": {
+  "series": "24.10", "format": "ipk", "cache": "vm2410", "http": 8089, "ssh": 2223, "subnet": "192.168.78",
+  "kernel": "ccc97f1598224e73a5f75fb1612c284db037f02fa050d1a18b5b2ee93631e37e",
+  "rootfs": "1d829b6087d561f9e278679a5525ae4fdd68716d8d2a4e1525500b247d99aada",
+  "sdk": "openwrt-sdk-24.10.8-armsr-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst",
+  "sdk_sha256": "5f430f5b30c9ea6dc472710356c139abf916b7ebd5de14e108e9cc204f40a2a4"
+ }
+}

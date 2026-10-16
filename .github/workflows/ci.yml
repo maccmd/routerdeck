@@ -1,0 +1,64 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run check && npm test && npm run build && npm run test:e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: browser-results
+          path: output/playwright/
+          retention-days: 14
+  packages:
+    needs: browser-tests
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        version: ['25.12.5', '24.10.8']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: ./scripts/package.sh '${{ matrix.version }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-${{ matrix.version }}
+          path: dist/packages/
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: packages-*
+          path: release-packages
+          merge-multiple: true
+      - name: Publish versioned packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$TAG" = "v$(node -p "require('./package.json').version")"
+          cp release-packages/25.12/SHA256SUMS release-packages/SHA256SUMS-apk
+          cp release-packages/24.10/SHA256SUMS release-packages/SHA256SUMS-ipk
+          gh release create "$TAG" --verify-tag --title "RouterDeck $TAG" --prerelease \
+            --notes-file "docs/releases/$TAG.md" \
+            release-packages/25.12/*.apk release-packages/24.10/*.ipk release-packages/SHA256SUMS-*
