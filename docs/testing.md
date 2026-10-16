@@ -8,7 +8,7 @@ surface and is never counted as proof of OpenWrt integration.
 
 | Layer | Coverage |
 | --- | --- |
-| Unit | 3 checks: rate calculation/reset/missing samples, zero vs unavailable, denied storage |
+| Unit | 4 checks: rate/reset/missing samples, zero vs unavailable, denied storage, real adapter without WAN |
 | Preview | 32 Playwright checks: Chromium and WebKit × 4 viewport sizes × 4 scenarios |
 | OpenWrt 25.12.5 | 17 real LuCI checks across both browsers and all viewport sizes |
 | OpenWrt 24.10.8 | Same 17 real LuCI checks on a separately booted guest |
