@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Navigation and windows
+
+- Move windows into the theme on every page. Menu labels navigate normally;
+  adjacent window buttons open or focus a window. The former Workspace package
+  now redirects old bookmarks to Overview and has no menu entry.
+- Add interface/device/zone editors, routing and client detail cards, related
+  pages and address diagnostics through permitted native LuCI routes.
+- Automatically arrange visible windows on open, close, minimize and restore;
+  add edge/corner snapping, layout controls and a shared column divider.
+- Keep the sidebar and header accessible during dragging and maximization;
+  persist window positions and sidebar width without reloading edited forms.
+- Present native object editors directly inside their RouterDeck window with
+  one title, a scrolling form and a persistent Save/Dismiss footer.
+- Add page-specific menu icons, preserved navigation scroll and bounded menu
+  loading retries with an explicit Retry action after failure.
+
+### Fixes
+
+- Update dashboard values, chart paths and table rows in place so polling
+  preserves scroll, focus and contextual links.
+- Improve login layout, button contrast/spacing, split-button actions,
+  field/button alignment and native modal action visibility.
+- Prevent username autofill from populating menu search on password pages.
+- Remove duplicate checkbox/radio decoration and preserve dependency-hidden
+  native fields on mobile.
+- Extend preview and native window regression coverage; document current-source
+  behavior separately from the published v0.1.0 validation baseline.
+
 ## 0.1.0 — 2026-10-16
 
 - Installable OpenWrt LuCI dark/light theme with dynamic permitted navigation.

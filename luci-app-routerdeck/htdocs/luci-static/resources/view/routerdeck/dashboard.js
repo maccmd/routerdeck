@@ -22,10 +22,10 @@ return view.extend({
  load: function () {
   this.history = []; this.previous = null;
   if (!document.querySelector('[data-rd-components]')) {
-   document.head.appendChild(E('link', { rel: 'stylesheet', href: L.resource('../routerdeck/components.css'), 'data-rd-components': '' }));
+   document.head.appendChild(E('link', { rel: 'stylesheet', href: L.resource('../routerdeck/components.css') + '?v=0.1.0-2', 'data-rd-components': '' }));
   }
-  return (window.RouterDeck ? Promise.resolve() : script(L.resource('../routerdeck/core.js')))
-   .then(() => window.RouterDeck.dashboard ? null : script(L.resource('../routerdeck/dashboard.js')))
+  return (window.routerdeckReady || (window.RouterDeck ? Promise.resolve() : script(L.resource('../routerdeck/core.js'))))
+   .then(() => window.RouterDeck.dashboard ? null : script(L.resource('../routerdeck/dashboard.js') + '?v=0.1.0-3'))
    .then(() => this.fetch());
  },
  fetch: function () {
@@ -41,7 +41,7 @@ return view.extend({
    this.history.push({ rx: sameDevice ? RouterDeck.rate(this.previous.rx, stats?.rx_bytes, dt) : null, tx: sameDevice ? RouterDeck.rate(this.previous.tx, stats?.tx_bytes, dt) : null });
    this.history = this.history.slice(-60);
    this.previous = { device, time: now, rx: stats?.rx_bytes, tx: stats?.tx_bytes };
-   const addr = net => (net['ipv4-address'] || []).map(ip => ip.address + '/' + ip.mask).join(', ') || (net['ipv6-address'] || []).map(ip => ip.address + '/' + ip.mask).join(', ');
+   const addr = net => [...(net['ipv4-address'] || []), ...(net['ipv6-address'] || [])].map(ip => ip.address + '/' + ip.mask).join(', ');
    return {
     hostname: board.hostname, model: board.model, firmware: board.release?.description, platform: board.release?.target, kernel: board.kernel,
     uptime: info.uptime, load: info.load?.[0] == null ? null : info.load[0] / 65536, memory: info.memory,
@@ -49,17 +49,17 @@ return view.extend({
     temperature: null, storage: info.root?.total ? RouterDeck.bytes((info.root.total - info.root.free) * 1024) + ' / ' + RouterDeck.bytes(info.root.total * 1024) : null,
     wan: wan ? { device, address: addr(wan), uptime: wan.uptime } : null, history: this.history,
     interfaces: nets.filter(net => net.interface !== 'loopback').map(net => ({ name: net.interface, up: net.up, protocol: net.proto, address: addr(net), device: net.l3_device || net.device })),
-    leases: leases ? [...(leases.dhcp_leases || []), ...(leases.dhcp6_leases || [])].map(lease => ({ hostname: lease.hostname, ip: lease.ipaddr || lease.ip6addr || lease.ip6addrs?.join(', '), mac: lease.macaddr, connection: null, status: 'Lease' })) : null,
+    leases: leases ? [...(leases.dhcp_leases || []), ...(leases.dhcp6_leases || [])].map(lease => ({ hostname: lease.hostname, ip: lease.ipaddr || lease.ip6addr || lease.ip6addrs?.join(', '), mac: lease.macaddr, duid: lease.duid, expires: lease.expires, status: 'Lease' })) : null,
     vpn: nets.filter(net => net.proto === 'wireguard').map(net => ({ name: net.interface, up: net.up, rx: devices[net.l3_device]?.stats?.rx_bytes, tx: devices[net.l3_device]?.stats?.tx_bytes })),
     error: !board.hostname || info.uptime == null
    };
   });
  },
  render: function (data) {
-  const container = E('div', {}, RouterDeck.dashboard(data));
+  const dashboard = RouterDeck.dashboard(data), container = E('div', {}, dashboard);
   poll.add(() => {
-   if (document.hidden || container.contains(document.activeElement)) return Promise.resolve();
-   return this.fetch().then(next => container.replaceChildren(RouterDeck.dashboard(next)));
+   if (document.hidden) return Promise.resolve();
+   return this.fetch().then(next => RouterDeck.updateDashboard(dashboard, next));
   }, 5);
   return container;
  },

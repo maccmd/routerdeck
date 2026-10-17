@@ -9,16 +9,19 @@
  <link rel="stylesheet" href="/luci-static/routerdeck/routerdeck.css">
  <script src="/luci-static/routerdeck/core.js"></script>
  <script src="/luci-static/routerdeck/dashboard.js"></script>
-<link rel="stylesheet" href="/luci-static/routerdeck/workspace.css">
-<script defer src="/luci-static/routerdeck/workspace.js"></script>
+ <link rel="stylesheet" href="/luci-static/routerdeck/windows.css">
+ <script src="/luci-static/routerdeck/windows.js"></script>
 </head>
 <body class="routerdeck">
  <a class="rd-skip" href="#maincontent">Skip to content</a>
  <aside class="rd-sidebar" id="rd-sidebar" aria-label="Main navigation">
   <a class="rd-brand" href="#dashboard"><img src="/luci-static/routerdeck/mark.svg" alt="" width="30" height="30"><span>RouterDeck<small>NETWORK CONSOLE</small></span></a>
-  <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" type="search" placeholder="Find a page…" aria-label="Find a page"><kbd>⌘ K</kbd></label>
+  <form id="rd-menu-search-form" class="rd-search-form" role="search" autocomplete="off">
+   <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" name="routerdeck-menu-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Find a page…" aria-label="Find a page"><kbd>⌘ K</kbd></label>
+  </form>
   <nav id="rd-navigation"></nav>
   <div class="rd-sidebar-foot"><span class="rd-dot"></span><span>Local preview<small>LuCI · RouterDeck 0.1</small></span></div>
+  <div class="rd-sidebar-resize" id="rd-nav-resize" role="separator" tabindex="0" aria-label="Resize navigation" aria-orientation="vertical" aria-controls="rd-sidebar" title="Drag to resize. Double-click to reset."></div>
  </aside>
  <button type="button" class="rd-backdrop" id="rd-backdrop" aria-label="Close navigation" hidden></button>
  <header class="rd-topbar">

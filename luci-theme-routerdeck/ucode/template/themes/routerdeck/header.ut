@@ -17,25 +17,30 @@
  <meta name="color-scheme" content="dark light">
  <meta name="darkreader-lock">
  <title>{{ striptags(`${boardinfo.hostname ?? 'OpenWrt'} | ${dispatched?.title ?? 'RouterDeck'}`) }}</title>
- <script src="{{ media }}/appearance.js?v=0.1.0-{{ pkgs_update_time }}"></script>
+ <script src="{{ media }}/appearance.js?v=0.1.0-3-{{ pkgs_update_time }}"></script>
  <link rel="stylesheet" href="/luci-static/bootstrap/cascade.css">
- <link rel="stylesheet" href="{{ media }}/components.css?v=0.1.0-{{ pkgs_update_time }}" data-rd-components>
- <link rel="stylesheet" href="{{ media }}/routerdeck.css?v=0.1.0-{{ pkgs_update_time }}">
+ <link rel="stylesheet" href="{{ media }}/components.css?v=0.1.0-2-{{ pkgs_update_time }}" data-rd-components>
+ <link rel="stylesheet" href="{{ media }}/routerdeck.css?v=0.1.0-16-{{ pkgs_update_time }}">
+ <link rel="stylesheet" href="{{ media }}/windows.css?v=0.1.0-6-{{ pkgs_update_time }}">
  <link rel="icon" href="{{ media }}/mark.svg" type="image/svg+xml">
  {% if (node?.css): %}<link rel="stylesheet" href="{{ resource }}/{{ node.css }}">{% endif %}
  {% if (css): %}<style>{{ css }}</style>{% endif %}
  <script src="{{ dispatcher.build_url('admin/translations', dispatcher.lang) }}"></script>
  <script src="{{ resource }}/cbi.js"></script>
- <script src="{{ media }}/core.js?v=0.1.0-{{ pkgs_update_time }}"></script>
+ <script src="{{ media }}/core.js?v=0.1.0-8-{{ pkgs_update_time }}"></script>
+ <script src="{{ media }}/windows.js?v=0.1.0-10-{{ pkgs_update_time }}"></script>
 </head>
 <body class="routerdeck lang_{{ dispatcher.lang }}{% if (blank_page): %} rd-login{% endif %}" data-page="{{ entityencode(join('-', ctx.request_path), true) }}">
 {% if (!blank_page): %}
  <a class="rd-skip" href="#maincontent">{{ _('Skip to content') }}</a>
  <aside class="rd-sidebar" id="rd-sidebar" aria-label="{{ _('Main navigation') }}">
   <a class="rd-brand" href="{{ dispatcher.build_url('admin') }}"><img src="{{ media }}/mark.svg" alt="" width="30" height="30"><span>RouterDeck<small>NETWORK CONSOLE</small></span></a>
-  <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" type="search" placeholder="{{ _('Find a page…') }}" aria-label="{{ _('Find a page') }}"><kbd>⌘ K</kbd></label>
+  <form id="rd-menu-search-form" class="rd-search-form" role="search" autocomplete="off">
+   <label class="rd-search"><span aria-hidden="true">⌕</span><input id="rd-menu-search" name="routerdeck-menu-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="{{ _('Find a page…') }}" aria-label="{{ _('Find a page') }}"><kbd>⌘ K</kbd></label>
+  </form>
   <nav id="rd-navigation"><p class="rd-muted">{{ _('Loading navigation…') }}</p></nav>
   <div class="rd-sidebar-foot"><span class="rd-dot"></span><span>{{ _('Local management') }}<small>LuCI · RouterDeck 0.1</small></span></div>
+  <div class="rd-sidebar-resize" id="rd-nav-resize" role="separator" tabindex="0" aria-label="{{ _('Resize navigation') }}" aria-orientation="vertical" aria-controls="rd-sidebar" title="{{ _('Drag to resize. Double-click to reset.') }}"></div>
  </aside>
  <button type="button" class="rd-backdrop" id="rd-backdrop" aria-label="{{ _('Close navigation') }}" hidden></button>
  <header class="rd-topbar">

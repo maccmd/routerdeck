@@ -1,5 +1,22 @@
 [
- {"title":"Monitor","items":[{"id":"dashboard","title":"Dashboard","symbol":"▦","href":"#dashboard"},{"id":"workspace","title":"Workspace","symbol":"▣","href":"#workspace"}]},
- {"title":"Network","items":[{"id":"interfaces","title":"Interfaces","symbol":"⇄","href":"#interfaces"},{"id":"firewall","title":"Firewall","symbol":"⬡","href":"#firewall"}]},
- {"title":"System","items":[{"id":"system","title":"System settings","symbol":"⚙","href":"#system"},{"id":"logs","title":"System log","symbol":"≡","href":"#logs"}]}
+  {
+    "title": "Monitor",
+    "items": [
+      {"id": "dashboard", "title": "Dashboard", "href": "#dashboard"}
+    ]
+  },
+  {
+    "title": "Network",
+    "items": [
+      {"id": "interfaces", "title": "Interfaces", "href": "#interfaces"},
+      {"id": "firewall", "title": "Firewall", "href": "#firewall"}
+    ]
+  },
+  {
+    "title": "System",
+    "items": [
+      {"id": "system", "title": "System settings", "href": "#system"},
+      {"id": "logs", "title": "System log", "href": "#logs"}
+    ]
+  }
 ]

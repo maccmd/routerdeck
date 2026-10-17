@@ -1,5 +1,0 @@
-/* Same-origin presentation only. Authentication and LuCI runtime are untouched. */
-.routerdeck .rd-sidebar,.routerdeck .rd-footer,.routerdeck .rd-skip { display:none!important; }
-.routerdeck header.rd-topbar { position:static!important; height:32px; margin:0!important; padding:4px 8px!important; justify-content:flex-end; }
-.routerdeck .rd-topbar > :not(#indicators) { display:none!important; }
-.routerdeck .rd-main { margin:0!important; padding:14px!important; width:100%!important; min-height:100vh; }

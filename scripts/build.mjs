@@ -7,7 +7,6 @@ await cp(root + 'preview', root + 'dist/preview/preview', { recursive: true });
 await cp(root + 'preview/index.html', root + 'dist/preview/index.html');
 await cp(root + 'luci-theme-routerdeck/htdocs/luci-static/routerdeck', root + 'dist/preview/luci-static/routerdeck', { recursive: true });
 await cp(root + 'luci-app-routerdeck/htdocs/luci-static/routerdeck', root + 'dist/preview/luci-static/routerdeck', { recursive: true });
-await cp(root + 'luci-app-routerdeck-workspace/htdocs/luci-static/routerdeck', root + 'dist/preview/luci-static/routerdeck', { recursive: true });
 const pkg = JSON.parse(await readFile(root + 'package.json', 'utf8'));
 await writeFile(root + 'dist/preview/version.json', JSON.stringify({ version: pkg.version, mode: 'preview', routerCompatible: false }, null, 2) + '\n');
 console.log('Built preview in dist/preview. Router packages are built separately with scripts/package.sh.');

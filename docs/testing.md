@@ -1,97 +1,138 @@
-# Validation report — 2026-10-16
+# Validation report — 2026-10-17
 
-RouterDeck 0.1.0 was developed on macOS Apple Silicon and exercised in real,
-isolated OpenWrt ARM guests. The local preview is a separate simulated product
-surface and is never counted as proof of OpenWrt integration.
+This report separates current `main` checks from the published v0.1.0 baseline.
+The preview uses simulated data. Real integration checks run against isolated
+OpenWrt ARM guests; neither establishes compatibility with physical router hardware.
 
-## Matrix
+## Current source
 
-| Layer | Coverage |
+| Layer | Latest result / scope |
 | --- | --- |
-| Unit | 4 checks: rate/reset/missing samples, zero vs unavailable, denied storage, real adapter without WAN |
-| Preview | 32 Playwright checks: Chromium and WebKit × 4 viewport sizes × 4 scenarios |
-| OpenWrt 25.12.5 | 17 real LuCI checks across both browsers and all viewport sizes |
-| OpenWrt 24.10.8 | Same 17 real LuCI checks on a separately booted guest |
-| Package lifecycle | One destructive-to-the-guest lifecycle check per firmware version |
-| Build | Official 25.12.5 SDK → three APKs; official 24.10.8 SDK → three IPKs |
+| Syntax | 13 JavaScript/JSON sources pass, including inline navigation |
+| Unit | 21 tests pass: sampling, missing data, storage failures, target validation, menu recovery and window URL allowlists |
+| Preview | 32 Playwright tests pass: Chromium and WebKit × 4 viewports × 4 scenarios |
+| OpenWrt 25.12.5 window guards | 4 tests pass: Chromium/WebKit × desktop/mobile, with native forms and tiled windows on desktop |
+| OpenWrt 25.12.5 interaction review | Contextual editors, window placement, menu recovery and stable dashboard refreshes; details below |
+| OpenWrt 24.10.8 | Earlier contextual-link checks pass; latest integrated windows, navigation recovery and editor presentation have not been revalidated |
+| SDK builds | Official 25.12.5 and 24.10.8 SDK builds pass: three APKs and three IPKs, with checksums |
 
-Viewports: **1920×1080, 1440×900, 1280×800 and 390×844**. Seven duplicate
-hostname mutation tests per firmware are intentionally skipped: the guest shares
-configuration across browsers, so that write runs once. Window Save & Apply also
-runs once per firmware inside its Chromium 1440 scenario.
+Preview viewports are **1920×1080, 1440×900, 1280×800 and 390×844**.
+The focused native window suite uses **1440×900 and 390×844**. Its apply-event
+test dispatches `uci-applied` to check stale-window handling without applying
+router configuration. The full native suite and package installation/removal
+lifecycle have not been rerun for this final source revision.
 
-## What the checks establish
+## Behavior covered
 
-- Preview navigation, dark/light persistence, tables, native preview dialogs,
-  validation, mock saving, literal rendering of hostile hostname text, and no
-  unexpected JavaScript or console errors.
-- Preview workspace keyboard movement/resizing, maximize/restore, minimize,
-  task switching, remembered windows, close cancellation and close-all.
-- Authenticated real LuCI dashboard data and traffic sampling; the displayed
-  platform is the guest's `armsr/armv8`, not the simulated NanoPi fixture.
-- Native Interfaces, Firewall, DHCP, System, Backup/Flash and Startup pages;
-  interface creation dialog opens and cancels without modifying the network.
-- Invalid-password rejection and logout through the original dispatcher.
-- Real hostname Save & Apply, UCI persistence, empty pending changes and reload.
-  The previous hostname is restored after each test.
-- Multiple native LuCI windows retain the authenticated session. An edited form
-  cannot close silently; saving another window is blocked. A native form can
-  apply successfully inside a window, after which sibling windows require reload.
-- Switching to Bootstrap and back through LuCI's Design selector. The dashboard
-  also renders under Bootstrap.
-- Removing active RouterDeck packages restores Bootstrap, then reinstalling
-  registers the theme without silently selecting it. Network, firewall and DHCP
-  configuration SHA-256 hashes stay identical across this lifecycle.
-- Final package files are real SDK-generated APK/IPK artifacts with dependencies
-  and hooks, installed by `apk`/`opkg` in the corresponding guest.
+### Navigation and contextual links
 
-## Visual review
+- Menu labels navigate normally; adjacent window buttons open or focus a window.
+  Keyboard activation, duplicate prevention, minimized restoration after page
+  navigation and cancellation of the native unsaved-edits warning were checked.
+- Search hides the complete menu row. Dark/light themes, a 181-pixel sidebar and
+  the 390-pixel mobile viewport were reviewed. The sidebar can be resized while
+  windows remain inside the available work area.
+- Chromium fault injection on 25.12.5 verified recovery after failed menu data
+  and theme-core requests. Three held menu requests stop after about 16 seconds;
+  Retry restores all 23 permitted entries without losing an unsaved hostname.
+  Failed optional window scripts do not prevent menu rendering.
+- Native contextual flows on 25.12.5 include Routing → WAN/LAN, interface →
+  bridge, interface details → firewall zone, dashboard object links, query
+  reload and browser Back across objects. Address diagnostics are prefilled
+  without running a command.
+- Earlier 24.10.8 checks covered WAN/bridge/zone editors, IPv6 diagnostic
+  prefilling and dashboard client → static lease editor. The temporary lease
+  fixture was restored. These checks predate the latest window changes.
 
-Screenshots are captured in every browser/viewport combination for dark/light,
-interfaces, modals and windows. Transitions are finished for screenshots so a
-half-faded native LuCI overlay is not mistaken for the final UI. Review caught
-and corrected mobile table compression, page overflow, mobile form labels,
-save-button contrast and light-mode header contrast.
+### Window layout and form guards
 
-Representative real guest captures:
+- Preview regression covers automatic two- and three-window arrangement,
+  reflow on close/minimize/restore, edge/corner snapping, drag cancellation,
+  maximize/restore, layout controls, the shared divider and persisted split
+  proportions. Loaded documents and edited inputs survive layout changes.
+- Manual Chromium checks cover three-to-six-window grids, Alt to suppress
+  snapping, keyboard snapping and divider reset. Narrowing the work area stacks
+  columns; widening it restores the saved split.
+- Native Interfaces and Routing were displayed side by side at 1920×1080 and
+  resized from 50/50 to 40/60 without reloading the route document. Opening
+  Diagnostics creates a three-window grid; closing it restores two columns.
+- Maximizing, dragging toward the menu, resizing the sidebar to 420 pixels and
+  restoring oversized saved geometry keep windows clear of the menu and header.
+  Mobile navigation opens above the active window.
+- Native regressions cover close/save guards and stale state in sibling windows
+  and the background page. The final four-test run passed in both browsers at
+  both viewport sizes.
 
-![Dark theme](screenshots/luci-dark.png)
-![Light theme](screenshots/luci-light.png)
-![Native LuCI windows](screenshots/luci-workspace.png)
+### Native editors in a single window
 
-The mobile screenshot is [available separately](screenshots/luci-mobile.png).
-All shown network addresses belong to disposable QEMU guests.
+Chromium and WebKit on 25.12.5 were used to open LAN from Routing and to edit it
+from a menu-opened Interfaces window. The form fills its iframe with one title,
+no inner window border or backdrop, and visible, hit-testable Save/Dismiss
+buttons. The hidden background list is excluded from focus and accessibility
+queries. Native General/Advanced/DHCP tabs and Dismiss work on desktop and mobile.
 
-## Environment and reproducibility
+Chromium also covered the bridge editor, light/dark themes and resizing beside
+Routing. An invalid gateway was rejected by native validation. A native Save
+with unchanged input staged LuCI's default-value normalizations; these were
+reverted through Configuration / Changes, and a UCI query confirmed **zero
+pending configurations**. No changes were applied. The changes dialog retained
+its ordinary modal role and border. Dependency-hidden mobile fields stay hidden.
+WebKit also confirmed that full-page editors keep their original modal presentation.
 
-- OpenWrt 25.12.5: ARM `virt`, kernel 6.12.94, LuCI core at `128a7812`.
-- OpenWrt 24.10.8: ARM `virt`, kernel 6.6.144, LuCI core at `cac97ed`;
-  current standard firewall package from the release feed.
-- QEMU HVF on Apple Silicon, two vCPUs, user-mode networking with private guest
-  LANs. HTTP/SSH forwarded only to 127.0.0.1.
-- SDK/image hashes and exact filenames: `scripts/releases.json`.
-- Node.js 22 and locked Playwright 1.64.1. CI runs the preview suite on Linux.
-- The VM helper was exercised from a fresh 24.10 image, including provisioning,
-  guest package installation, clean stop and restart.
+### Dashboard refreshes
 
-Run commands are in [development.md](development.md). Ignored local evidence is
-under `output/playwright/` and `.cache/`; VM traces are disabled to keep login
-credentials out of trace artifacts. CI artifacts contain only preview evidence.
+Across three native five-second refreshes, Chromium recorded no layout shifts.
+The chart updated while root/table/link nodes, focus and page scroll stayed
+intact. On mobile, horizontal table scroll remained at 100 pixels across two
+refreshes, with no document overflow. Renderer checks also covered row insertion,
+reordering/removal, duplicate-MAC IPv4/IPv6 leases, unavailable data and recovery,
+and literal rendering of hostile hostname text.
 
-## Boundaries and known observations
+## Visual examples
 
-Assertions cover authenticated views. Initial testing of the stock Bootstrap
-JavaScript login view exposed intermittent initialization hangs. RouterDeck now
-uses a native HTML form with the same dispatcher login fields. WebKit can also
-report a native polling XHR cancellation around iframe lifecycle events; the
-test ignores that exact cancellation only during intentional close-all, while
-other page errors remain failures. These are not a claim of a universally
-error-free browser console or of third-party application compatibility.
+Reviewed captures from the disposable OpenWrt 25.12.5 guest:
 
-No physical NanoPi/FriendlyWrt device, real PPPoE negotiation, WireGuard peer
-handshake, hardware sensor, firmware flash or backup restoration was tested.
-Workspace is experimental, and custom third-party save controls need separate
-validation. See [compatibility.md](compatibility.md) for feature limitations.
+![Dark editor and routes](screenshots/windows-dark.png)
 
-The home router, host network interfaces and Mac mini configuration were not
-changed. All configuration writes targeted disposable loopback guests.
+[Light desktop](screenshots/windows-light.png) · [Mobile editor](screenshots/windows-mobile.png)
+
+The addresses and hostname in these captures belong to the test guest. Browser
+reports and raw captures remain under ignored `output/playwright/`.
+
+## Published v0.1.0 baseline
+
+The [report at the v0.1.0 tag](https://github.com/maccmd/routerdeck/blob/v0.1.0/docs/testing.md)
+records 4 unit tests, 32 preview tests, 17 real LuCI checks per firmware and one
+package lifecycle check per firmware. Both 25.12.5 and 24.10.8 were exercised.
+Those checks included native authentication/logout, standard configuration
+pages, hostname Save & Apply with restoration, applying inside the original
+Workspace, Bootstrap switching and package removal/reinstallation with unchanged
+network/firewall/DHCP configuration hashes.
+
+That baseline applies to the published packages and their separate Workspace
+page. It is not a claim that every lifecycle or Apply scenario was repeated for
+current integrated windows. See [release notes](releases/v0.1.0.md).
+
+## Environment and limits
+
+- macOS Apple Silicon, QEMU HVF, two vCPUs and private guest LANs. HTTP/SSH are
+  forwarded only to 127.0.0.1; no host interfaces or routes are changed.
+- OpenWrt 25.12.5: ARM `virt`, kernel 6.12.94, LuCI core `128a7812`.
+- OpenWrt 24.10.8 baseline: ARM `virt`, kernel 6.6.144, LuCI core `cac97ed`.
+- Official image/SDK filenames and SHA-256 hashes are pinned in
+  [scripts/releases.json](../scripts/releases.json). The test runner uses
+  Node.js 22+ and locked Playwright 1.64.1.
+- CI runs preview tests and SDK builds. Native VM tests remain local; commands
+  are in [Development](development.md). Authentication traces are disabled.
+
+QEMU HTTP occasionally resets static asset requests or stalls the initial LuCI
+view load, including unchanged LuCI resources. Affected manual checks and earlier
+regressions were repeated after recovery; failed renders were not counted as
+successful checks. The final focused native suite passed all four cases in one run.
+WebKit's known polling-XHR cancellation is ignored only during intentional
+close-all; other page errors remain test failures.
+
+No physical NanoPi/FriendlyWrt device, real PPPoE session, WireGuard peer handshake,
+hardware sensor, firmware flash or backup restoration has been tested. Custom
+third-party save actions and radio/peer-specific hardware flows need separate
+validation. See [Compatibility](compatibility.md) for feature limits.

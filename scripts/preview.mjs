@@ -14,7 +14,6 @@ const server = http.createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   let file;
   if (path === '/' || path === '/index.html') file = resolve(root, 'preview/index.html');
-  else if (/^\/luci-static\/routerdeck\/workspace(?:-frame)?\.(?:js|css)$/.test(path)) file = resolve(root, 'luci-app-routerdeck-workspace/htdocs' + path);
   else if (path === '/luci-static/routerdeck/dashboard.js') file = resolve(root, 'luci-app-routerdeck/htdocs/luci-static/routerdeck/dashboard.js');
   else {
    const mount = mounts.find(([prefix]) => path.startsWith(prefix));

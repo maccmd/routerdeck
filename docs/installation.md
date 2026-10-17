@@ -1,9 +1,27 @@
 # Installation and recovery
 
 Use the package format matching the installed **firmware**, not the CPU alone.
-0.1.0 was validated with upstream OpenWrt 25.12.5 and 24.10.8 on armsr/armv8.
-FriendlyWrt requires a separate check of its LuCI, ucode and package dependencies.
-Keep Bootstrap installed and retain SSH access when changing designs.
+The published v0.1.0 was validated with upstream OpenWrt 25.12.5 and 24.10.8 on
+armsr/armv8. Current window changes have been exercised on 25.12.5; see the
+[validation report](testing.md) for the exact scope. FriendlyWrt requires a
+separate check of its LuCI, ucode and package dependencies. Keep Bootstrap
+installed and retain SSH access when changing designs.
+
+## Choose a source
+
+| Source | Window behavior | Packages to install |
+| --- | --- | --- |
+| Published v0.1.0 prerelease | Separate experimental Workspace page | Theme; optional dashboard and Workspace |
+| Current `main` | Windows throughout the theme, automatic arrangement and contextual editors | Theme; optional dashboard. Workspace is only a legacy URL redirect |
+
+For current source, follow [the build instructions](development.md#checks-and-builds).
+Output is under `dist/packages/25.12/` or `dist/packages/24.10/`, with a `SHA256SUMS`
+file in each directory. The unreleased builds still use the 0.1.0-r1 filenames,
+so keep their packages and checksums separate from downloaded release assets.
+The commands below show a fresh installation. For repeated development installs,
+remove the RouterDeck packages from the disposable guest first, then run its
+`install` helper described in [Development](development.md#openwrt-vm). A normal
+install of an unchanged version may leave the previous files in place.
 
 ## Download and verify
 
@@ -25,8 +43,9 @@ RouterDeck does not alter package repositories or disable their signature checks
 apk update
 apk add luci luci-theme-bootstrap
 apk add --allow-untrusted /tmp/luci-theme-routerdeck-0.1.0-r1.apk
-# Optional, independent extensions:
+# Optional dashboard:
 apk add --allow-untrusted /tmp/luci-app-routerdeck-0.1.0-r1.apk
+# v0.1.0 Workspace, or the current-source legacy URL redirect:
 apk add --allow-untrusted /tmp/luci-app-routerdeck-workspace-0.1.0-r1.apk
 ```
 
@@ -36,32 +55,29 @@ apk add --allow-untrusted /tmp/luci-app-routerdeck-workspace-0.1.0-r1.apk
 opkg update
 opkg install luci luci-theme-bootstrap
 opkg install /tmp/luci-theme-routerdeck_0.1.0-r1_all.ipk
-# Optional, independent extensions:
+# Optional dashboard:
 opkg install /tmp/luci-app-routerdeck_0.1.0-r1_all.ipk
+# v0.1.0 Workspace, or the current-source legacy URL redirect:
 opkg install /tmp/luci-app-routerdeck-workspace_0.1.0-r1_all.ipk
 ```
 
 The base theme registers **RouterDeck** without selecting it automatically. In
 LuCI choose **System → System → Language and Style → Design → RouterDeck** and
-**Save & Apply**. Dashboard and Workspace appear under Status if installed.
+**Save & Apply**. Dashboard appears under Status if installed.
 Light/dark preference is per browser. The optional dashboard becomes the first
 Status page; the original Overview remains available.
 
-## Workspace
+## Windows in current source
 
-Workspace is experimental and optional. Open a permitted page from the selector.
-Drag its title or use arrow keys on the title button to move it; Shift + arrows
-resize. The bottom-right corner resizes with a pointer. Titlebar buttons reload,
-minimize, maximize and close. Taskbar buttons restore and focus windows. Mobile
-shows one window at a time. At most six windows may open, limiting polling load.
+Click a menu label to navigate normally; use its adjacent window button to open
+that page alongside the current one. Entity links open native editors or detail
+cards. Windows arrange automatically and remain inside the work area, keeping
+the menu accessible. Up to six can remain open; mobile shows one at a time.
 
-Edit and apply **one form at a time**. UCI staging belongs to the entire session.
-Two edited windows cannot save concurrently through the standard LuCI action
-buttons. After an apply, reload other windows before saving there. Closing an
-edited window asks before discarding browser edits; already staged UCI changes
-must still be applied or reverted using LuCI. Layout stores only allowed paths
-and geometry; passwords, form values, session IDs and tokens are never stored.
-Use normal full-page LuCI for third-party applications with custom save controls.
+Edit and apply **one form at a time**. Save stages changes in LuCI; Save & Apply
+applies them. Browser layout is remembered, but form values are not. See
+[Navigation and windows](navigation.md) for placement, shortcuts, form guards,
+supported object links and restoration behavior.
 
 ## Recovery
 

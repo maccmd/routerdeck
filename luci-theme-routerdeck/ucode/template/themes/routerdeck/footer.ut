@@ -1,7 +1,8 @@
 {% if (!blank_page): %}
  </main>
  <footer class="rd-footer"><span>RouterDeck <span class="rd-muted">/</span> {{ version.distname }} {{ version.distversion }}</span><span>{{ version.luciname }} · {{ _('Local device') }}</span></footer>
- <script>L.require('menu-routerdeck');</script>
+ <script>if (window.L) L.env.resource_version += '-routerdeck-navigation-2';</script>
+ {% include('themes/routerdeck/navigation') %}
 {% endif %}
 </body>
 </html>

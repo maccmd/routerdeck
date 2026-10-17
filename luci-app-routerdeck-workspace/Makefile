@@ -12,7 +12,7 @@ define Package/luci-app-routerdeck-workspace
   SECTION:=luci
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
-  TITLE:=RouterDeck experimental window workspace
+  TITLE:=RouterDeck legacy workspace URL compatibility
   DEPENDS:=+luci-theme-routerdeck +luci-mod-status
   PKGARCH:=all
   URL:=https://github.com/maccmd/routerdeck

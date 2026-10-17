@@ -1,17 +1,19 @@
 # Compatibility
 
-| Target | Status |
-| --- | --- |
-| OpenWrt 25.12.5 ARM64 `armsr/armv8` | Real QEMU LuCI integration; native APK |
-| OpenWrt 24.10.8 ARM64 `armsr/armv8` | Real QEMU LuCI integration; native IPK |
-| Other 25.12/24.10 patch releases | Expected same architecture, not individually tested |
-| FriendlyWrt | Requires matching modern ucode LuCI and firmware-specific validation |
-| NanoPi R3S-LTS | No physical device available; not certified |
-| Older Lua-only LuCI, snapshots, legacy themes | Unsupported in this release |
+| Target | Published v0.1.0 | Current `main` |
+| --- | --- | --- |
+| OpenWrt 25.12.5 ARM64 `armsr/armv8` | Native APK, real LuCI and package lifecycle in QEMU | Integrated windows, contextual links and native form guards checked in QEMU |
+| OpenWrt 24.10.8 ARM64 `armsr/armv8` | Native IPK, real LuCI and package lifecycle in QEMU | Earlier contextual links checked; latest window/navigation/editor changes not revalidated |
+| Other 25.12/24.10 patch releases | Not individually tested | Not individually tested |
+| FriendlyWrt | Not certified | Requires matching modern ucode LuCI and firmware-specific validation |
+| NanoPi R3S-LTS | No physical device tested | No physical device tested |
+| Older Lua-only LuCI and snapshots | Unsupported | Unsupported |
 
 The packages are noarch/all, but that does not prove compatibility with every
 firmware vendor's modified LuCI. Bootstrap is a required fallback dependency.
 No changes are made to core LuCI files, RPC methods, authentication or ACL grants.
+Current build results and the distinction between focused checks and the full
+release lifecycle are recorded in [Validation](testing.md).
 
 ## What the dashboard means
 
@@ -27,22 +29,26 @@ No changes are made to core LuCI files, RPC methods, authentication or ACL grant
 - Optional RPC data can be unavailable under restricted accounts. RouterDeck
   does not grant broader permissions to make these values appear.
 
-## Workspace limits
+## Window limits
 
-Workspace is an optional experimental package. Frames isolate LuCI globals,
+Current windows are part of the theme; v0.1.0 uses a separate Workspace page.
+Frames isolate LuCI globals,
 IDs and modal state while keeping ordinary same-origin sessions and CSRF checks.
 Standard save/apply actions are guarded against concurrent edited or stale
-windows. Third-party forms with custom actions have not been audited; use normal
-navigation for those. A browser reload does not restore field values. Native
+windows, including the background page. Third-party forms with custom actions
+have not been audited; use normal navigation for those. A browser reload does
+not restore field values. Native
 LuCI controls still own UCI staging, rollback, uploads and session expiry.
 
 OpenWrt enforces same-origin framing on these tested releases. RouterDeck does
 not disable frame protections. Firmware with stricter `frame-ancestors 'none'`
-may reject the workspace and should use regular page navigation.
+may reject frames; use the window’s “Open as a page” link.
 
 ## Limits of validation
 
-UI tests cover native pages and hostname Save & Apply. They do not establish
+The v0.1.0 baseline includes native pages and hostname Save & Apply. Current
+window checks cover layout, validation, Save/revert and form guards; the latest
+Apply path has not been rerun end to end. These tests do not establish
 real Ethernet/Wi-Fi drivers, NAT performance, PPPoE negotiation, WireGuard peer
 connectivity, flash safety or backup restoration on hardware. Firmware flashing,
 package upgrades and network configuration are still the standard LuCI features;

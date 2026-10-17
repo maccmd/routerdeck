@@ -1,10 +1,12 @@
-# Architecture and source research
+# Architecture
 
-Research date: 2026-10-16. Primary target: OpenWrt 25.12, with a separately tested
-24.10 build. This repository intentionally separates the theme, monitoring app
-and simulated preview.
+Current source as of 2026-10-17. The primary target is OpenWrt 25.12; the
+25.12/24.10 validation boundaries are in [Compatibility](compatibility.md).
+The theme, monitoring app and simulated preview have separate responsibilities.
 
 ## Owning sources inspected
+
+Initial integration research was performed on 2026-10-16:
 
 - [LuCI 25.12, commit 75a306d](https://github.com/openwrt/luci/tree/75a306df84a020c57a631ef5b4c02ace56d93387): Bootstrap `header.ut`, `footer.ut`, `sysauth.ut`, `menu-bootstrap.js`; base `header.ut`, `footer.ut`, `luci.js`, `ui.js`, ACLs; status/system/network views and `luci.mk`.
 - [Argon, commit 539e3e1](https://github.com/jerrykuku/luci-theme-argon/tree/539e3e1db56b2348c3655615540e45638b797c73): ucode theme templates, packaging, appearance architecture. Argon confirms that a ucode theme can preserve standard LuCI widgets while providing custom navigation and appearance. Its configuration, Lua code and assets were not copied.
@@ -23,15 +25,33 @@ JavaScript login view. The small theme header retains password and
 initramfs warnings; the generic **LuCI** header/footer still initialize sessions,
 tokens, rollback confirmation and the client runtime.
 
-`menu-routerdeck.js` uses `ui.menu.load()` and `ui.menu.getChildren()` rather than
-a hard-coded menu. It preserves alternate modes and nested tabs. Installed
-applications, dependency checks and ACL filtering remain owned by LuCI. The
-theme contains no ACL files, server handlers, UCI form replacements or polling
-implementation for configuration changes.
+The footer includes `navigation.ut` directly in the page so an interrupted
+request for a separate menu script cannot strand the sidebar. It uses
+`ui.menu.load()` and `ui.menu.getChildren()` rather than a hard-coded menu,
+preserving alternate modes and nested tabs. Menu data gets up to three attempts,
+each bounded to five seconds; a failed cached LuCI request is cleared before
+retrying. Persistent failure shows a Retry button that reloads only navigation,
+preserving the current form. Search is reapplied after recovery.
+
+Header statistics and contextual/window enhancements initialize independently
+of menu rendering. A failed theme core download has a shared recovery promise
+for navigation and Dashboard; late duplicate core execution preserves existing
+extensions. Installed applications, dependency checks and ACL filtering remain
+owned by LuCI. The theme contains no ACL files, server handlers, UCI form
+replacements or polling implementation for configuration changes.
 
 Appearance lives in `localStorage` under `routerdeck.theme`. Access failures are
 caught. Dynamic text uses text nodes; values are never concatenated into HTML.
 No credentials, sessions or tokens are persisted by RouterDeck.
+
+## Contextual navigation
+
+`routerdeck-links.js` adds ACL-filtered related pages, entity links and detail
+cards to stable native widgets. Typed query parameters locate existing native
+forms; the enhancer does not implement configuration writes or diagnostic
+execution. Read-only RPC snapshots do not share a view's mutable UCI model.
+See [the navigation map and behavior](navigation.md) for supported transitions,
+missing-object handling and validation limits.
 
 ## Dashboard boundaries
 
@@ -51,32 +71,83 @@ unavailable state under restricted accounts.
 
 Traffic uses deltas of byte counters and monotonic elapsed time. The first
 sample, counter resets, missing data and device changes produce gaps rather
-than fictional rates. History is bounded to 60 samples. Polling pauses while
-the page is hidden or a dashboard table has keyboard focus.
+than fictional rates. History is bounded to 60 samples on a fixed time axis.
+Polling pauses while the page is hidden. Value bindings update in place;
+tables retain rows by interface name or client identity and address. Unchanged
+links, keyboard focus and table scroll positions survive refreshes. Contextual
+links on new entries are decorated before paint instead of rebuilding the page.
 
 The dashboard's renderer is shared with preview, while its data adapter is only
 used in LuCI. No fixture data is included in either router package. The app is
 usable with Bootstrap, although RouterDeck provides its intended layout.
 
-## Window extension
+## Windows on every page
 
-`luci-app-routerdeck-workspace` is separate from both the theme and dashboard.
-It opens only exact same-origin view URLs from the ACL-filtered LuCI menu.
-Each iframe keeps its own LuCI runtime, IDs, modal state and native session/CSRF
-handling. The parent adds presentation styles and interaction guards; it does
-not proxy requests, copy tokens, remove frame protections or patch LuCI globals.
+The theme owns `windows.js` and `windows.css`. There is no separate Workspace
+menu or picker. Menu labels navigate normally; adjacent window buttons and
+contextual entity links open movable, resizable windows over the current page.
+The button is a separate keyboard control, remains visible on touch screens and
+shows whether its window already exists. Repeated use focuses that window.
+Native form tabs keep their normal behavior. Ctrl/Cmd-click and the window's
+“Open as a page” link provide ordinary navigation.
+The legacy workspace package only redirects old bookmarks to Overview.
 
-The controller saves only allowed paths and geometry. It tracks input/change
-activity conservatively and confirms closing or reloading edited forms. Native
-save/apply buttons are blocked when another form is edited. The core LuCI
-`uci-applied` event clears the applied form and marks other windows stale until
-reload. This does not replace session-wide UCI staging. Custom third-party save
-controls have not been audited and should use ordinary page navigation.
+Only same-origin view routes and containers from the ACL-filtered LuCI menu,
+plus the stock read-only `admin_status/index` Overview template, can open.
+A validated `rd` query identifies an interface, device, zone, reservation
+or diagnostic address. Logout, action endpoints, arbitrary queries, downloads
+and external URLs are not intercepted. Details about addresses, clients and
+routing entries open lightweight windows; their links open the same native editors.
 
-At most six windows open. Mobile uses full-size windows and the taskbar.
-Keyboard arrows move a focused title; Shift + arrows resize. Minimizing keeps
-form state in memory; closing discards it only after confirmation when edited.
-No cross-origin postMessage protocol or iframe authentication bypass is used.
+Each iframe keeps its own LuCI runtime, IDs, modal state and session/CSRF checks.
+A same-origin parent controller handles windows opened from inside other windows.
+No nested desktop, cross-origin message bridge or authentication bypass is used.
+The early `rdwindow` marker removes duplicate navigation before the first paint.
+Long native modal forms scroll internally and keep their action buttons accessible.
+
+Inside a window, `presentEditor()` observes native modal/map state and promotes
+an active `.modal.cbi-modal` editor into the window's content area. Its native
+heading supplies the outer title; the form becomes an accessible region while
+the underlying list is hidden. The original DOM, LuCI map stack, validation and
+save handlers remain intact. A frame-only CSS class removes the duplicate inner
+border/backdrop and keeps actions below the scrolling map. Closing the editor
+restores its original dialog attributes and list; confirmation/error dialogs
+retain their normal presentation. Observers are removed on frame reload/close.
+
+Input/change tracking conservatively marks forms edited. Closing or reloading
+asks before discarding those edits. Standard saves and submits are blocked when
+another form is edited or the current form is stale. The main background page
+participates in the same guard. Native `uci-applied`/`uci-reverted` events mark
+other pages stale until reload. This does not replace session-wide UCI staging;
+custom third-party save controls have not been audited.
+
+At most six windows open. Mobile shows one window with a task switcher. The
+window area starts to the right of the desktop sidebar, below the header and
+above the task switcher. Moving, resizing, maximizing and restoring old layouts
+all respect these bounds. Sidebar and chrome resizing recompute the area.
+On mobile the header remains reachable, and the navigation drawer covers windows.
+The user-facing controls and keyboard shortcuts are documented in
+[Navigation and windows](navigation.md#arrange-windows).
+
+Snap slots are normalized to the work area, with eight-pixel gutters. Floating
+restore geometry remains separate, so tearing off or maximizing a snapped
+window does not lose its previous size. A narrow work area transposes full-height
+column slots into rows without overwriting the saved split. Visible windows
+automatically form a grid on creation, close, minimize and restore. Ordinary
+focus changes and storage restoration preserve the existing geometry. Automatic
+arrangement excludes minimized windows; the explicit taskbar tiler includes
+them. One visible window fills the work area. Two adjacent
+full-height columns share a draggable, keyboard-accessible divider. These
+operations never recreate frame documents. Pointer cancellation restores the
+original geometry; pointer capture and an iframe shield keep drags continuous.
+
+Primary menu navigation restores existing windows minimized in the destination,
+so they do not cover the requested page. A per-tab session marker carries only
+the destination path; cancelling the unsaved-edits navigation prompt leaves the
+current windows and inputs intact. Normal page loads recreate frame documents,
+so native beforeunload guards still apply to edited forms.
+Storage contains permitted paths and geometry only, never submitted field values,
+passwords or tokens. Minimized windows retain their in-memory forms.
 
 ## Packaging and licensing
 
