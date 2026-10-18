@@ -5,6 +5,9 @@ import { signal } from '@preact/signals';
 import { client, board, user } from '../state.js';
 import { NULL_SESSION } from './rpc.js';
 import { poller } from './sources.js';
+import { pickFile, uploadFile, downloadFile } from './files.js';
+import { askConfirm } from '../shell/overlays.jsx';
+import { openWindow, openJob } from '../windows/open.js';
 
 export const notice = signal(null);
 
@@ -21,7 +24,7 @@ export class ActionError extends Error {
  }
 }
 
-const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch'];
+const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch', 'packages', 'jobs'];
 const affected = key => key.startsWith('uci:') || AFFECTED.includes(key);
 
 // Services reload about a second after a commit; look again once they have.
@@ -34,10 +37,19 @@ function refreshAfterChange() {
 // Models describe what to do as data, so they stay testable without a
 // router: `ops` are configuration changes (one Undo step each); `call` and
 // `calls` are other rpcd calls such as starting a service; `verify` checks
-// a password first; `download` fetches a file with this session.
+// a password first; `download` fetches a file with this session. Steps run
+// in this order, and any of them may be left out:
+//   ask      a confirmation before anything happens
+//   upload   a file the user picks, sent to `upload.path` on the router
+//   check    an rpcd call whose reply `reject` may refuse and `confirm`
+//            turns into a question; refusing or declining runs `cancel`
+//   call(s), download, then
+//   job      a package operation or script, shown in its own window
+//   open     another window, such as Install Package
 export async function perform(change) {
  if (!change) return null;
  if (change.ops) return apply(change);
+ if (change.ask && !await askConfirm(change.ask)) return null;
  if (change.verify) {
   let session;
   try {
@@ -47,28 +59,43 @@ export async function perform(change) {
   }
   await client.call('session', 'destroy', {}, { session: session.ubus_rpc_session }).catch(() => {});
  }
+ if (change.upload) {
+  const file = await pickFile(change.upload.accept);
+  if (!file) return null;
+  let shown = -1;
+  await uploadFile(change.upload.path, file, {
+   onProgress: share => {
+    const percent = Math.floor(share * 10) * 10;
+    if (percent !== shown && file.size > 1024 * 1024) { shown = percent; notify(`Uploading ${file.name}: ${percent}%`); }
+   }
+  }).catch(failure => { throw new ActionError({ message: failure.message }); });
+ }
+ if (change.check) {
+  const [object, method, args = {}] = change.check;
+  const result = await client.call(object, method, args);
+  if (result?.ok === false) throw new ActionError(result);
+  const problem = change.reject?.(result);
+  if (problem) {
+   if (change.cancel) await client.call(...change.cancel).catch(() => {});
+   throw new ActionError({ message: problem });
+  }
+  if (change.confirm && !await askConfirm(change.confirm(result))) {
+   if (change.cancel) await client.call(...change.cancel).catch(() => {});
+   return null;
+  }
+ }
  for (const [object, method, args = {}] of change.calls ?? (change.call ? [change.call] : [])) {
   // A username left empty means the account of this session.
   const result = await client.call(object, method, 'username' in args && !args.username ? { ...args, username: user.value ?? 'root' } : args);
   if (result && (result.ok === false || result.result === false)) throw new ActionError(result);
  }
- if (change.download) await download(change.download);
+ if (change.download) await downloadFile(change.download).catch(failure => { throw new ActionError({ message: failure.message }); });
+ if (change.job) openJob(change.job);
+ if (change.open) openWindow(change.open);
  poller.refresh(affected);
  setTimeout(() => poller.refresh(affected), 1500);
- if (change.notice) notify(change.notice);
+ if (change.notice) notify(change.notice, change.tone);
  return { ok: true };
-}
-
-async function download({ url, filename }) {
- const response = await fetch(url, { method: 'POST', body: new URLSearchParams({ sessionid: client.session, filename }), credentials: 'same-origin' });
- if (!response.ok) throw new ActionError({ message: `The router answered HTTP ${response.status}` });
- const link = document.createElement('a');
- link.href = URL.createObjectURL(await response.blob());
- link.download = filename;
- document.body.append(link);
- link.click();
- link.remove();
- setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
 
 export async function apply(change) {

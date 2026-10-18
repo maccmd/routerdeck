@@ -60,8 +60,12 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
   LAN* sends a magic packet; *Graphs* and the *Traffic* tab of an interface
   draw live Tx/Rx.
 - **System.** Identity, Clock (time zone, set from this computer), NTP,
-  Logging, Password, Packages, Scheduler (cron), Startup (procd services),
-  Resources, Backup download and Reboot.
+  Logging, Password, Packages (install, upgrade, uninstall, check for
+  updates), Scheduler (cron), Scripts, Startup (procd services), Resources,
+  Backup (download and restore), Firmware (sysupgrade), Reset Configuration
+  and Reboot.
+- **Files.** Browse the router's file system, upload, download, create
+  folders and remove files.
 - **Terminal.** *New Terminal* (Alt+T) is a command line in the RouterOS style
   (see [Command line](#command-line)). *New Shell* embeds the router's shell
   through [ttyd](https://github.com/tsl0922/ttyd), which asks for its own login.
@@ -105,6 +109,10 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | Routing ▸ Rules | `rule` and `rule6` sections, `ip rule` | X, I invert, D kernel rule, A active | Policy routing to other tables |
 | Queues ▸ SQM | `queue` sections (sqm-scripts), `tc` | X, R shaping | cake or fq_codel per device with link-layer settings |
 | System ▸ … | `/etc/config/system`, `/etc/crontabs/root`, `rc list`, apk/opkg databases | — | Scheduler jobs: "# name" lines name them, commented-out jobs are disabled |
+| System ▸ Packages | apk or opkg: installed packages, `apk list --upgradable` / `opkg list-upgradable` | D dependency, U update available | Install, Upgrade, Uninstall and Check For Updates run the package manager as a job and show its output; not undoable |
+| System ▸ Scripts | `script` sections in `/etc/config/routerdeck` (the source keeps its lines) | — | *Run Script* shows the output; the scheduler and Netwatch run one with `/usr/libexec/routerdeck/run-script <name>`; *Jobs* lists running scripts and stops them |
+| System ▸ Backup, Firmware, Reset Configuration | `sysupgrade -b`, `-r`, image check through procd's `validate_firmware_image`, `firstboot` | — | A backup and an image are uploaded, checked and confirmed before anything changes; an image the router rejects is never flashed; reset needs the overlay of squashfs images |
+| Files | the file system through the plugin, transfers through cgi-io | — | Uploads, downloads and removals are not undoable; `/proc`, `/sys`, `/dev` and `/rom` cannot be changed |
 | Tools ▸ Bandwidth Test, IP Scan | `bandwidth` and `scan` jobs of the same runner | — | Need iperf3 for the bandwidth test |
 | Tools ▸ Netwatch | `netwatch` sections in `/etc/config/routerdeck`, `routerdeck-netwatch` service | U up, D down, X disabled | Commands run on changes, not on the first check |
 | Tools ▸ Wake on LAN | etherwake | — | Shown when etherwake is installed |
@@ -156,8 +164,10 @@ names come from the form labels (*Src. Address* is `src-address`).
   `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
   `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
   `dhcp-server binding`), `/routing rule`, `/queue sqm`, `/log`, `/system`
-  (`identity`, `clock`, `ntp client`, `logging`, `package`, `scheduler`,
-  `startup`, `resource`, `history`, and `reboot`, which asks first) and `/tool`
+  (`identity`, `clock`, `ntp client`, `logging`, `package` with `install`,
+  `uninstall`, `upgrade` and `check-for-updates`, `scheduler`, `script` with
+  `run` and `script job`, `startup`, `resource`, `history`, and `reboot` and
+  `reset-configuration`, which ask first) and `/tool`
   (`traceroute`, `torch`, `bandwidth-test`, `ip-scan`, `netwatch`, `wol`).
   `/ip address` and
   `/ip/address` are the same; `..` goes up, `/` to the top; any unique
@@ -220,21 +230,33 @@ Ping and Traceroute run as jobs: rpcd handles one call at a time, so a probe
 waiting for its timeout inside the plugin would stall every window. The
 plugin's `diag` method starts `/usr/libexec/routerdeck/diag` in the
 background, reads its results and stops it; at most eight jobs run at once.
-Bandwidth tests (iperf3) and IP scans use the same runner. Netwatch is a procd
-service, `routerdeck-netwatch`, so it keeps watching while no console is open.
+Bandwidth tests (iperf3) and IP scans use the same runner. Package
+operations and scripts too, started by the plugin's `task` method: their
+output streams line by line, a package operation always runs to its end and
+only one runs at a time, and Stop ends a script with every command it
+started. Netwatch is a procd service, `routerdeck-netwatch`, so it keeps
+watching while no console is open.
 
 Actions that are not configuration changes — starting a service, setting the
-clock, changing the password, Wake on LAN, downloading a backup — go straight
-to rpcd and are not in the Undo history.
+clock, changing the password, Wake on LAN, installing packages, files,
+restoring a backup, flashing firmware — go straight to rpcd and are not in
+the Undo history. Uploads go to `/tmp` through cgi-io first; the plugin checks
+a backup (`tar -tzf`) or an image (`validate_firmware_image`) and the console
+asks before restoring or flashing. Restoring, flashing and resetting refuse
+while Safe Mode is on.
 
 ## Access and security
 
 `/usr/share/rpcd/acl.d/routerdeck-console.json` grants the
 `routerdeck-console` group read access to the status objects and UCI configs the
-windows show (including iwinfo and the diagnostics jobs), and write access to
-the plugin's `apply`, `undo`, `redo`, `safemode` and `wol`, `rc init`,
-`system reboot` and LuCI's `setLocaltime` and `setPassword`. The plugin runs as root
-inside rpcd; diagnostics accept only plain host names and addresses. Users with `read '*'` / `write '*'` in
+windows show (including iwinfo, the diagnostics jobs and directory listings),
+and write access to the plugin's `apply`, `undo`, `redo`, `safemode`, `wol`,
+`task`, `file_remove`, `file_mkdir`, `restore`, `firmware` and `reset`, `rc
+init`, `system reboot`, LuCI's `setLocaltime` and `setPassword`, and reading
+and writing any file through cgi-io. Only writers get file transfers: a
+read-only account cannot download `/etc/shadow`. The plugin runs as root
+inside rpcd; diagnostics accept only plain host names and addresses, and
+package names are checked before they reach the package manager. Users with `read '*'` / `write '*'` in
 `/etc/config/rpcd` (root by default) receive the group automatically. Serve
 the router over HTTPS where untrusted users share the network; ttyd then also
 needs SSL, or the browser blocks the embedded terminal.
@@ -246,8 +268,10 @@ needs SSL, or the browser blocks the embedded terminal.
   needs them; the last five minutes live in the browser, not on the router.
 - DHCP Networks and Options are dnsmasq options; where odhcpd is the main
   DHCPv4 server (`maindhcp`), the windows say so, because it ignores them.
-- Packages lists what is installed; installing and removing stay in LuCI or a
-  shell. The password change cannot be undone.
+- Package operations, file changes, a restored backup, flashed firmware and
+  the password change cannot be undone, and Safe Mode does not cover them.
+- Packages shows installed packages; finding packages to install by
+  description stays in LuCI or `apk search`/`opkg find`.
 - Torch measures connections tracked by the firewall, not packets on the wire:
   bridged traffic and anything without connection tracking is not shown, and
   the device a connection belongs to comes from the routing table.

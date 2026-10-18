@@ -11,7 +11,7 @@
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "fw_counters", "history", "info", "log", "neighbors", "netwatch", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
+				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "files", "fw_counters", "history", "info", "log", "neighbors", "netwatch", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
@@ -22,8 +22,11 @@
 			"ubus": {
 				"luci": [ "setLocaltime", "setPassword" ],
 				"rc": [ "init" ],
-				"routerdeck": [ "apply", "redo", "safemode", "undo", "wol" ],
+				"routerdeck": [ "apply", "file_mkdir", "file_remove", "firmware", "redo", "reset", "restore", "safemode", "task", "undo", "wol" ],
 				"system": [ "reboot" ]
+			},
+			"file": {
+				"/*": [ "read", "write" ]
 			}
 		}
 	}

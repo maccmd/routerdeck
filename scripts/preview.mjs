@@ -35,6 +35,28 @@ const server = http.createServer(async (req, res) => {
    res.writeHead(200, { 'Content-Type': 'application/x-targz', 'Content-Disposition': 'attachment; filename="backup.tar.gz"' });
    return res.end(gzipSync('etc/config/system: simulated backup of the preview router\n'));
   }
+  // cgi-io's upload and download, against the session's simulated router.
+  if (path === '/cgi-bin/cgi-upload' && req.method === 'POST') {
+   const chunks = [];
+   for await (const chunk of req) chunks.push(chunk);
+   const form = await new Request('http://preview/', { method: 'POST', headers: { 'content-type': req.headers['content-type'] ?? '' }, body: Buffer.concat(chunks) }).formData();
+   const router = ubus.sessions.get(form.get('sessionid'))?.router;
+   const file = form.get('filedata');
+   if (!router || !file || typeof file === 'string') { res.writeHead(403); return res.end('Access denied'); }
+   const data = Buffer.from(await file.arrayBuffer());
+   if (!router.writeFile(String(form.get('filename')), data)) { res.writeHead(403); return res.end('Access to path denied by ACL'); }
+   res.writeHead(200, { 'Content-Type': 'application/json' });
+   return res.end(JSON.stringify({ size: data.length }));
+  }
+  if (path === '/cgi-bin/cgi-download' && req.method === 'POST') {
+   let body = '';
+   for await (const chunk of req) body += chunk;
+   const fields = new URLSearchParams(body);
+   const content = ubus.sessions.get(fields.get('sessionid'))?.router.readFile(fields.get('path'));
+   if (!content) { res.writeHead(404); return res.end('File not found'); }
+   res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${(fields.get('filename') ?? 'download').replace(/"/g, '')}"` });
+   return res.end(content);
+  }
   if (path === '/' || path === '/routerdeck') { res.writeHead(302, { Location: '/routerdeck/' }); return res.end(); }
   let file;
   if (path === '/routerdeck/') file = resolve(consoleDir, 'index.html');

@@ -36,11 +36,15 @@ export const MENU = [
   { id: 'system-password', label: 'Password', window: 'system-password', requires: 'luci_object' },
   { id: 'system-packages', label: 'Packages', window: 'system-packages' },
   { id: 'system-scheduler', label: 'Scheduler', window: 'system-scheduler', requires: 'cron' },
+  { id: 'system-scripts', label: 'Scripts', window: 'system-scripts' },
   { id: 'system-startup', label: 'Startup', window: 'system-startup', requires: 'rc' },
   { id: 'system-resources', label: 'Resources', window: 'system-resources' },
   { id: 'system-backup', label: 'Backup', window: 'system-backup', requires: 'backup' },
+  { id: 'system-firmware', label: 'Firmware', window: 'system-firmware', requires: 'sysupgrade' },
+  { id: 'system-reset', label: 'Reset Configuration', action: 'reset', requires: 'sysupgrade' },
   { id: 'system-reboot', label: 'Reboot', action: 'reboot' }
  ] },
+ { id: 'files', label: 'Files', icon: 'files', window: 'files', requires: 'upload' },
  { id: 'log', label: 'Log', icon: 'log', window: 'log' },
  { id: 'tools', label: 'Tools', icon: 'tools', children: [
   { id: 'tool-ping', label: 'Ping', window: 'tool-ping' },

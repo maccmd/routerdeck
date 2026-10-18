@@ -208,6 +208,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-field-multi { display: flex; flex-direction: column; gap: 1px; max-width: 300px; max-height: 120px; overflow: auto; padding: 3px 5px; border: 1px solid var(--rd-border-soft); background: var(--rd-list); }
 .rd-field-multi label { display: flex; align-items: center; gap: 5px; }
 .rd-muted { color: var(--rd-muted); }
+.rd-field-code { width: 100%; min-height: 120px; padding: 4px 5px; border: 1px solid var(--rd-border); border-radius: 0; background: var(--rd-list); font-family: var(--rd-mono); font-size: 12px; line-height: 16px; resize: vertical; tab-size: 4; }
+
+/* Job output (package operations, scripts) and the file list. */
+.rd-job { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.rd-job-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 8px 0 8px 8px; }
+.rd-job-command { margin-bottom: 4px; color: var(--rd-muted); font-family: var(--rd-mono); }
+.rd-job-output { flex: 1; min-height: 0; margin: 0; overflow: auto; padding: 4px 6px; background: var(--rd-list); border: 1px solid var(--rd-border-soft); font-family: var(--rd-mono); font-size: 12px; line-height: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rd-files-path { flex: 1; min-width: 120px; height: 22px; margin-left: 4px; padding: 0 5px; border: 1px solid var(--rd-border); background: var(--rd-list); font-family: var(--rd-mono); }
 
 /* Menus and prompts above all windows. */
 .rd-context { position: fixed; z-index: 2000; min-width: 150px; padding: 2px 0; background: var(--rd-chrome); border: 1px solid var(--rd-border); box-shadow: 2px 3px 10px var(--rd-shadow); }

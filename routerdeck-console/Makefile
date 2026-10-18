@@ -37,6 +37,7 @@ define Package/routerdeck-console/install
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/diag $(1)/usr/libexec/routerdeck/diag
 	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-netwatch $(1)/etc/init.d/routerdeck-netwatch
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/netwatch $(1)/usr/libexec/routerdeck/netwatch
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/run-script $(1)/usr/libexec/routerdeck/run-script
 endef
 
 define Package/routerdeck-console/conffiles

@@ -1,0 +1,14 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Runs a script from System > Scripts by name, for the scheduler, Netwatch or
+# a shell: /usr/libexec/routerdeck/run-script <name> [arguments...]
+name="$1"
+case "$name" in
+	''|*[!A-Za-z0-9_]*) echo "usage: $0 <script name> [arguments...]" >&2; exit 2 ;;
+esac
+if [ "$(uci -q get "routerdeck.$name")" != script ]; then
+	echo "There is no script $name" >&2
+	exit 1
+fi
+shift
+exec /bin/sh -c "$(uci -q get "routerdeck.$name.source")" "$name" "$@"

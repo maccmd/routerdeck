@@ -6,8 +6,10 @@ import { ItemWindow } from '../item/ItemWindow.jsx';
 import { TerminalWindow } from './TerminalWindow.jsx';
 import { PingWindow, TracerouteWindow, TorchWindow, BandwidthWindow, ScanWindow, GraphsWindow } from './ToolWindows.jsx';
 import { CliWindow } from './CliWindow.jsx';
+import { JobWindow } from './JobWindow.jsx';
+import { FilesWindow } from './FilesWindow.jsx';
 
-const TOOLS = { ping: PingWindow, traceroute: TracerouteWindow, torch: TorchWindow, bandwidth: BandwidthWindow, scan: ScanWindow, graphs: GraphsWindow };
+const TOOLS = { ping: PingWindow, traceroute: TracerouteWindow, torch: TorchWindow, bandwidth: BandwidthWindow, scan: ScanWindow, graphs: GraphsWindow, job: JobWindow, files: FilesWindow };
 
 export function WindowBody({ win }) {
  const spec = WINDOW_KINDS[win.kind];

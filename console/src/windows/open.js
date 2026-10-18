@@ -21,3 +21,11 @@ export function openItem(modelId, row = null, extra = {}) {
  focusWindow(id);
  return id;
 }
+
+// A package operation or a script, with its output in its own window.
+// `attach` shows a job that is already running.
+export function openJob({ title, task = null, attach = null }) {
+ const id = manager.open('job', null, { params: { task, id: attach }, title, instance: attach ? `job:${attach}` : undefined, geometry: 'job' });
+ focusWindow(id);
+ return id;
+}

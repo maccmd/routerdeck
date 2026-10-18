@@ -10,6 +10,7 @@ import { ValidationError } from '../model/common.js';
 import { tokenize, quote, propertyName, pick, CliError } from './parser.js';
 import { pingView, traceView, bandwidthView, scanView, ms } from '../model/tools.js';
 import { bitrate } from '../lib/format.js';
+import { taskView } from '../model/system.js';
 
 const TREE = {
  interface: { model: 'interfaces', export: false, children: {
@@ -41,9 +42,10 @@ const TREE = {
  routing: { children: { rule: { model: 'routing-rules' } } },
  queue: { children: { sqm: { model: 'sqm-queues' } } },
  log: { model: 'log' },
- system: { commands: ['reboot'], children: {
+ system: { commands: ['reboot', 'reset-configuration'], children: {
   identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },
-  logging: { model: 'system-logging' }, package: { model: 'system-packages' }, scheduler: { model: 'system-scheduler' },
+  logging: { model: 'system-logging' }, package: { model: 'system-packages', commands: ['install'] }, scheduler: { model: 'system-scheduler' },
+  script: { model: 'system-scripts', children: { job: { model: 'system-script-jobs' } } },
   startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }
  } },
  tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' } } }
@@ -63,7 +65,8 @@ const HELP = {
  print: 'Print the items', find: 'Show the numbers of matching items', add: 'Create a new item', set: 'Change item properties', remove: 'Remove items',
  enable: 'Enable items', disable: 'Disable items', comment: 'Set the comment of items', export: 'Print the configuration as commands',
  ping: 'Send ICMP echo requests', traceroute: 'Trace the route to a host', 'bandwidth-test': 'Measure throughput with iperf3', 'ip-scan': 'Find hosts that answer ping on a network', wol: 'Wake a computer with a magic packet', torch: 'Watch traffic per connection (opens a window)',
- undo: 'Undo the last change', redo: 'Redo the last undone change', quit: 'Close this terminal', reboot: 'Reboot the router (asks first)', '..': 'Go up one level', '/': 'Go to the top level'
+ undo: 'Undo the last change', redo: 'Redo the last undone change', quit: 'Close this terminal', reboot: 'Reboot the router (asks first)', 'reset-configuration': 'Erase the configuration and reboot with the defaults (asks first)',
+ install: 'Install packages by name', '..': 'Go up one level', '/': 'Go to the top level'
 };
 const YES = ['yes', 'true', 'on', '1'], NO = ['no', 'false', 'off', '0'];
 
@@ -80,7 +83,7 @@ function commandsOf(node) {
    if (model.comment) list.push('comment');
    if (node.exportable) list.push('export');
   }
-  for (const tool of model.tools ?? []) list.push(tool.id);
+  for (const tool of model.tools ?? []) if (tool.cli !== false) list.push(tool.id);
  }
  if (node.special) list.push('print');
  if (node.special === 'history') list.push('undo', 'redo');
@@ -213,7 +216,7 @@ const flagsHeader = model => {
  return entries.length ? `Flags: ${entries.map(([flag, text]) => `${flag} - ${text.toUpperCase()}`).join('; ')}` : null;
 };
 
-export function createCli({ load, apply, undo, redo, createJob, out, user = 'root', identity = () => 'router', safe = () => false, openWindow = () => {}, close = () => {}, reboot = async () => {}, now = () => new Date() }) {
+export function createCli({ load, apply, undo, redo, createJob, out, user = 'root', identity = () => 'router', safe = () => false, openWindow = () => {}, close = () => {}, reboot = async () => {}, reset = async () => {}, now = () => new Date() }) {
  let current = ROOT;
  let running = null;
  // A question such as "Reboot, yes? [y/N]:" waits for the next line.
@@ -411,6 +414,9 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
     return change;
    });
   }
+  const tool = model.tools?.find(item => item.id === command && item.cli !== false);
+  // A tool such as check-for-updates needs no items.
+  if (tool && !positional.length && !model.singleton && tool.enabled([])) return runChange(tool.run([], data));
   const rows = model.singleton ? model.rows(data).slice(0, 1) : selectRows(node, model, data, command === 'comment' ? positional.slice(0, 1) : positional);
   if (!rows.length) throw new CliError('no such item');
   const name = row => rowName(row, model);
@@ -445,10 +451,9 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
    const text = named.find(word => word.key === 'comment')?.value ?? positional[1]?.text ?? '';
    return apply(model.comment(rows, text, data));
   }
-  const tool = model.tools?.find(item => item.id === command);
   if (tool) {
    if (!tool.enabled(rows)) throw new CliError(`failure: ${tool.label} does not apply to these items`);
-   return apply(tool.run(rows, data));
+   return runChange(tool.run(rows, data));
   }
   throw new CliError(`bad command name ${command}`);
  }
@@ -605,6 +610,29 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
   if (last?.error || view.error) throw new CliError(last?.error ?? view.error);
  }
 
+ // Package operations and scripts print their output here instead of
+ // opening a window; a command typed here needs no extra confirmation.
+ async function runTask(task) {
+  let printed = 0, last = null;
+  const job = createJob(state => {
+   last = state;
+   const view = taskView(state.results);
+   for (; printed < view.lines.length; printed++) out.line(view.lines[printed]);
+  }, { method: 'task' });
+  running = job;
+  try { await job.start(task); } finally { running = null; }
+  const view = taskView(last?.results ?? []);
+  if (last?.error || view.error) throw new CliError(`failure: ${last?.error ?? view.error}`);
+  if (view.stopped) return out.line('interrupted');
+  if (view.exit !== null && view.exit !== 0) throw new CliError(`failure: exited with code ${view.exit}`);
+ }
+
+ function runChange(change) {
+  if (change?.job?.task) return runTask(change.job.task);
+  if (change?.job || change?.open || change?.upload) throw new CliError('failure: this works in its window only');
+  const { ask, ...rest } = change ?? {};
+  return apply(rest);
+ }
 
  async function execute(node, command, args) {
   switch (command) {
@@ -631,6 +659,14 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
    case 'reboot':
     pending = { question: 'Reboot, yes? [y/N]: ', action: async () => { await reboot(); out.line('system will reboot shortly'); } };
     return;
+   case 'reset-configuration':
+    pending = { question: 'Dangerous! Reset anyway? [y/N]: ', action: async () => { await reset(); out.line('the configuration is being reset; the router reboots with its defaults'); } };
+    return;
+   case 'install': {
+    const names = args.filter(word => !word.op).flatMap(word => word.text.split(',')).filter(Boolean);
+    if (!names.length) throw new CliError('install needs package names, such as install tcpdump');
+    return runTask({ tool: 'package', operation: 'install', names });
+   }
    case 'undo': return undo();
    case 'redo': return redo();
    case 'quit': return close();

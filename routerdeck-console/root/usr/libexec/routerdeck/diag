@@ -1,10 +1,11 @@
 #!/usr/bin/ucode
 // SPDX-License-Identifier: Apache-2.0
-// Runs one Ping or Traceroute job for the console. It runs outside rpcd,
-// which handles one call at a time and would stall every window while a probe
-// waits for its timeout. Results are appended to <job>/results as JSON lines;
-// the job ends when it is stopped or done, or once no client has read its
-// results for a while.
+// Runs one job for the console: Ping, Traceroute, a bandwidth test, an IP
+// scan, a package operation or a script. It runs outside rpcd, which handles
+// one call at a time and would stall every window while a probe waits for its
+// timeout. Results are appended to <job>/results as JSON lines. A diagnostic
+// ends when it is stopped or done, or once no client has read its results for
+// a while; package operations and scripts always run to their end.
 'use strict';
 
 import { open, stat, access, popen } from 'fs';
@@ -16,8 +17,8 @@ const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
 
 const dir = ARGV[0];
 const job = read_json(dir + '/args.json', null);
-// A host is needed except for a network scan and an iperf3 server.
-const needs_host = job && !(job.tool == 'scan' || job.tool == 'bandwidth' && job.mode == 'server');
+// A host is needed by Ping, Traceroute and a bandwidth test client.
+const needs_host = job && (job.tool in [ 'ping', 'traceroute' ] || job.tool == 'bandwidth' && job.mode != 'server');
 if (!job || needs_host && (type(job.host) != 'string' || !match(job.host, HOST)))
 	exit(1);
 const started = time();
@@ -198,7 +199,55 @@ function scan() {
 	write({ macs });
 }
 
-if (job.tool == 'ping')
+const OUTPUT_LIMIT = 5000;
+
+// Streams a command's output as { line } results and ends with { exit }.
+// With `stoppable`, the shell's pid lets Stop end it.
+function stream(command, stoppable) {
+	let pipe = popen(sprintf('%sexec %s 2>&1', stoppable ? sprintf('echo $$ >%s/child.pid; ', dir) : '', command), 'r');
+	if (!pipe) {
+		write({ error: 'start', message: 'Could not start ' + command });
+		return;
+	}
+	let count = 0, line;
+	while ((line = pipe.read('line')) != null && line != '') {
+		if (++count <= OUTPUT_LIMIT)
+			write({ line: rtrim(line, '\n') });
+		else if (count == OUTPUT_LIMIT + 1)
+			write({ truncated: OUTPUT_LIMIT });
+	}
+	let code = pipe.close();
+	write(access(dir + '/stop') ? { exit: code, stopped: true } : { exit: code });
+}
+
+const MANAGERS = {
+	apk: { update: 'apk update', install: 'apk add', remove: 'apk del', upgrade: 'apk upgrade' },
+	opkg: { update: 'opkg update', install: 'opkg install', remove: 'opkg remove', upgrade: 'opkg upgrade' }
+};
+const PACKAGE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$/;
+
+function package_job() {
+	let base = MANAGERS[job.manager]?.[job.operation];
+	let names = type(job.names) == 'array' ? job.names : [];
+	if (!base || length(filter(names, name => type(name) != 'string' || !match(name, PACKAGE)))) {
+		write({ error: 'invalid', message: 'Invalid package operation' });
+		return;
+	}
+	let command = trim(base + ' ' + join(' ', names));
+	write({ command });
+	// opkg locks its database even to list updates; let another opkg (the
+	// console's own list of updates, for one) finish first.
+	if (job.manager == 'opkg')
+		for (let i = 0; i < 120 && trim(run('pidof opkg')) != ''; i++)
+			sleep(500);
+	stream(command, false);
+}
+
+if (job.tool == 'package')
+	package_job();
+else if (job.tool == 'script')
+	stream('/bin/sh ' + dir + '/script.sh', true);
+else if (job.tool == 'ping')
 	ping();
 else if (job.tool == 'traceroute')
 	traceroute();

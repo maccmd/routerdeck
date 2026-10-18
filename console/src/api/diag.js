@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-// A Ping or Traceroute job on the router: started once, then read every half
-// second until it ends. Stop reads the last results once more. Reads of one
-// job are serialized, so no result is appended twice.
+// A job on the router (Ping, Traceroute, a package operation, a script):
+// started once, then read every half second until it ends. Stop reads the
+// last results once more. Reads of one job are serialized, so no result is
+// appended twice. Diagnostics start with `diag`; package operations and
+// scripts are changes and start with `task`. `attach` reads a job that is
+// already running, such as one started before the page was reloaded.
 
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const message = failure => failure?.message ?? String(failure);
 
-export function createJob(client, { onUpdate = () => {}, every = 500, wait = delay } = {}) {
+export function createJob(client, { onUpdate = () => {}, every = 500, wait = delay, method = 'diag', onStarted = () => {} } = {}) {
  let current = null;
  let state = { results: [], running: false, error: null };
  const update = changes => { state = { ...state, ...changes }; onUpdate(state); };
@@ -29,7 +32,7 @@ export function createJob(client, { onUpdate = () => {}, every = 500, wait = del
   job.stopping = true;
   if (job.id) {
    try {
-    await client.call('routerdeck', 'diag', { action: 'stop', id: job.id });
+    await client.call('routerdeck', method, { action: 'stop', id: job.id });
     await read(job);
    } catch {
     // The job ends on its own once nobody reads it.
@@ -39,15 +42,19 @@ export function createJob(client, { onUpdate = () => {}, every = 500, wait = del
   update({ running: false });
  }
 
- async function start(args) {
+ async function start(args, attach = null) {
   await stop();
   const job = { id: null, from: 0, reading: Promise.resolve(), stopping: false };
   current = job;
   update({ results: [], running: true, error: null });
   try {
-   const reply = await client.call('routerdeck', 'diag', { action: 'start', ...args });
-   if (!reply?.ok) throw new Error(reply?.message ?? 'The router did not start it');
-   job.id = reply.id;
+   if (attach) job.id = attach;
+   else {
+    const reply = await client.call('routerdeck', method, { action: 'start', ...args });
+    if (!reply?.ok) throw new Error(reply?.message ?? 'The router did not start it');
+    job.id = reply.id;
+    onStarted(reply.id);
+   }
    while (current === job) {
     await wait(every);
     if (current !== job || !(await read(job))) break;
@@ -61,5 +68,7 @@ export function createJob(client, { onUpdate = () => {}, every = 500, wait = del
   }
  }
 
- return { start, stop, state: () => state };
+ // Stops reading without stopping the job on the router.
+ const detach = () => { current = null; };
+ return { start, attach: id => start(null, id), stop, detach, state: () => state };
 }

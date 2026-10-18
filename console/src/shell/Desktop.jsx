@@ -17,6 +17,16 @@ const ACTIONS = {
  tile: () => manager.tileAll(),
  'minimize-all': () => manager.minimizeAll(),
  'close-all': () => manager.closeAll(),
+ reset: async () => {
+  if (!await askConfirm({ title: 'Reset Configuration', text: `Erase every setting and installed package of ${board.value?.hostname ?? 'the router'} and reboot with the firmware's defaults? The router comes back at its default address; Undo and Safe Mode cannot take this back.`, submitLabel: 'Reset' })) return;
+  try {
+   const result = await client.call('routerdeck', 'reset');
+   if (result?.ok === false) throw new Error(result.message);
+   notify('The configuration is being reset; the router reboots with its defaults', 'warning');
+  } catch (failure) {
+   notify(`Reset failed: ${errorText(failure)}`, 'error');
+  }
+ },
  reboot: async () => {
   if (!await askConfirm({ title: 'Reboot', text: `Reboot ${board.value?.hostname ?? 'the router'} now? Open windows reconnect after you log in again.`, submitLabel: 'Reboot' })) return;
   try {

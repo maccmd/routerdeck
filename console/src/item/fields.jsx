@@ -76,6 +76,9 @@ export function Field({ field: spec, value, values, onChange, error, disabled })
   case 'list':
    control = <ListControl id={id} value={value} disabled={disabled} onChange={onChange} />;
    break;
+  case 'textarea':
+   control = <textarea id={id} class="rd-field-code" rows={field.rows ?? 12} spellcheck={false} value={value ?? ''} disabled={disabled} aria-invalid={error ? 'true' : undefined} aria-describedby={describedBy} onInput={event => onChange(event.currentTarget.value)} />;
+   break;
   case 'negatable':
    control = (
     <div class="rd-field-negatable">

@@ -52,6 +52,11 @@
 - Undo/Redo carry a change over onto a file another program changed in other
   options; removed address-list entries leave nftables at once; changed
   WireGuard peers restart their interface.
+- Install, upgrade and uninstall packages and check for updates (apk or
+  opkg) as jobs with their output; add System ▸ Scripts with Run Script,
+  running jobs and `run-script` for the scheduler and Netwatch; restore a
+  backup after a check, flash firmware the router accepts, reset the
+  configuration; add a Files window with uploads and downloads through cgi-io.
 
 ### Removed
 

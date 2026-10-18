@@ -45,7 +45,12 @@ export function CliWindow({ win, active }) {
   load: async keys => Object.fromEntries(await Promise.all(keys.map(async key => [key, await SOURCES[key][0]()]))),
   apply: perform, undo, redo,
   reboot: async () => { await client.call('system', 'reboot'); notify('The router is rebooting', 'warning'); },
-  createJob: onUpdate => createJob(client, { onUpdate }),
+  reset: async () => {
+   const result = await client.call('routerdeck', 'reset');
+   if (result?.ok === false) throw new Error(result.message);
+   notify('The configuration is being reset', 'warning');
+  },
+  createJob: (onUpdate, options = {}) => createJob(client, { onUpdate, ...options }),
   out: {
    line: (text, tone) => print({ text, tone }),
    // A block that is redrawn in place, like traceroute's table.

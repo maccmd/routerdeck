@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // System menu: identity, clock, NTP, logging, password, packages, the cron
-// scheduler, startup services, resources and backup. Settings live in
-// /etc/config/system; the scheduler edits /etc/crontabs/root as a whole.
-import { sections, truthy, list, invalid, compact, networkOptions } from './common.js';
+// scheduler, scripts, startup services, resources, backup and firmware.
+// Settings live in /etc/config/system; the scheduler edits
+// /etc/crontabs/root as a whole; scripts are sections of
+// /etc/config/routerdeck.
+import { sections, truthy, list, invalid, compact, networkOptions, NAME } from './common.js';
 import { uptime, load, bytes } from '../lib/format.js';
 import { isIPv4, canonicalIPv6 } from '../lib/ip.js';
 
@@ -155,29 +157,92 @@ export const systemPassword = {
  }
 };
 
+/* --- Packages ------------------------------------------------------------ */
+
+export const PACKAGE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$/;
+const OPERATION = { update: 'Check for updates', install: 'Install', remove: 'Uninstall', upgrade: 'Upgrade' };
+const PACKAGE_NOTE = 'Package operations change the firmware and cannot be undone; Safe Mode does not cover them.';
+
+export function packageJob(operation, names = []) {
+ return { job: { title: `${OPERATION[operation]} ${names.join(' ')}`.trim(), task: { tool: 'package', operation, names } } };
+}
+
 export const packages = {
  id: 'system-packages',
  noun: 'Package',
  readOnly: true,
  sources: ['packages'],
  columns: [
-  { id: 'flags', label: '', width: 26 },
+  { id: 'flags', label: '', width: 30 },
   { id: 'name', label: 'Name', width: 220 },
   { id: 'version', label: 'Version', width: 170 },
+  { id: 'update', label: 'Available', width: 150 },
   { id: 'size', label: 'Size', width: 80, align: 'right', sort: (value, row) => row.size ?? -1 },
   { id: 'description', label: 'Description', width: 420 }
  ],
- flagLegend: { D: 'installed as a dependency' },
+ flagLegend: { D: 'installed as a dependency', U: 'update available' },
  defaultSort: 'name',
- status: data => data.packages?.manager ? `${data.packages.manager}; install and remove packages with LuCI or in a shell` : 'no package database found',
- rows: data => (data.packages?.packages ?? []).map(item => ({
-  key: item.name, readOnly: true, size: item.size, flags: item.requested ? '' : 'D',
-  cells: { name: item.name, version: item.version ?? '', size: Number.isFinite(item.size) ? bytes(item.size) : '', description: item.description ?? '' }
- })),
+ status: data => data.packages?.manager ? `${data.packages.manager}; Check For Updates refreshes the package lists` : 'no package database found',
+ note: PACKAGE_NOTE,
+ rows: data => (data.packages?.packages ?? []).map(item => {
+  const update = data.packages.upgradable?.[item.name] ?? '';
+  return {
+   key: item.name, readOnly: true, size: item.size, update, flags: (item.requested ? '' : 'D') + (update ? 'U' : ''),
+   cells: { name: item.name, version: item.version ?? '', update, size: Number.isFinite(item.size) ? bytes(item.size) : '', description: item.description ?? '' }
+  };
+ }),
  itemTitle: row => `Package <${row.key}>`,
- fields: () => ['name', 'version', 'size', 'description'].map(id => ({ id, label: packages.columns.find(column => column.id === id).label, type: 'static' })),
- values: row => ({ ...row.cells })
+ fields: () => ['name', 'version', 'update', 'size', 'description'].map(id => ({ id, label: packages.columns.find(column => column.id === id).label, type: 'static' })),
+ values: row => ({ ...row.cells }),
+ tools: [
+  { id: 'install', label: 'Install…', cli: false, enabled: () => true, run: () => ({ open: 'system-package-install' }) },
+  {
+   id: 'uninstall', label: 'Uninstall', enabled: rows => rows.length > 0,
+   run: rows => ({ ask: { title: 'Uninstall', text: `Uninstall ${rows.map(row => row.key).join(', ')}? The package manager refuses when other packages need them. ${PACKAGE_NOTE}`, submitLabel: 'Uninstall' }, ...packageJob('remove', rows.map(row => row.key)) })
+  },
+  { id: 'upgrade', label: 'Upgrade', enabled: rows => rows.length > 0 && rows.every(row => row.update), run: rows => packageJob('upgrade', rows.map(row => row.key)) },
+  { id: 'check-for-updates', label: 'Check For Updates', enabled: () => true, run: () => packageJob('update') }
+ ]
 };
+
+export const packageInstall = {
+ id: 'package-install',
+ noun: 'Package',
+ singleton: true,
+ sources: ['packages'],
+ action: { label: 'Install' },
+ rows: data => data.packages?.manager ? [{ key: 'install', section: 'install' }] : [],
+ itemTitle: () => 'Install Package',
+ itemStatus: () => [],
+ fields: data => [
+  { id: 'names', label: 'Packages', type: 'text', placeholder: 'tcpdump iperf3' },
+  { id: 'note', label: '', type: 'note', value: () => `${data.packages?.manager ?? 'The package manager'} installs them with their dependencies from the configured feeds. If it cannot find a package, run Check For Updates first. ${PACKAGE_NOTE}` }
+ ],
+ values: () => ({ names: '' }),
+ defaults: () => ({ names: '' }),
+ save(values, row, data) {
+  const names = String(values.names ?? '').trim().split(/[\s,]+/).filter(Boolean);
+  if (!names.length || names.some(name => !PACKAGE.test(name))) invalid('names', 'Enter package names such as tcpdump');
+  const installed = new Set((data.packages?.packages ?? []).map(item => item.name));
+  const already = names.filter(name => installed.has(name));
+  if (already.length === names.length) invalid('names', `${already.join(', ')} ${already.length > 1 ? 'are' : 'is'} already installed`);
+  return packageJob('install', names);
+ }
+};
+
+// Output of a package operation or a script: lines, then the exit code.
+export function taskView(results) {
+ const lines = [];
+ let exit = null, error = null, command = null, stopped = false;
+ for (const item of results ?? []) {
+  if (item.error) error = item.message ?? item.error;
+  else if (item.command) command = item.command;
+  else if (item.line !== undefined) lines.push(item.line);
+  else if (item.truncated) lines.push(`… output after ${item.truncated} lines is not shown`);
+  else if (item.exit !== undefined) { exit = item.exit; stopped = !!item.stopped; }
+ }
+ return { lines, exit, error, command, stopped };
+}
 
 /* --- Scheduler (cron) --------------------------------------------------- */
 
@@ -297,6 +362,86 @@ export const scheduler = {
  }
 };
 
+/* --- Scripts ------------------------------------------------------------- */
+
+export const RUN_SCRIPT = '/usr/libexec/routerdeck/run-script';
+const firstLine = source => String(source ?? '').split('\n').find(line => line.trim() && !line.trim().startsWith('#'))?.trim() ?? '';
+
+export const scripts = {
+ id: 'system-scripts',
+ noun: 'Script',
+ sources: ['uci:routerdeck'],
+ columns: [
+  { id: 'flags', label: '', width: 26 },
+  { id: 'name', label: 'Name', width: 160 },
+  { id: 'lines', label: 'Lines', width: 60, align: 'right', sort: value => Number(value) || 0 },
+  { id: 'source', label: 'Source', width: 420 }
+ ],
+ flagLegend: {},
+ defaultSort: 'name',
+ status: () => `Shell scripts run as root; the scheduler and Netwatch run one with ${RUN_SCRIPT} <name>`,
+ rows: data => sections(data['uci:routerdeck'], 'script').map(section => ({
+  key: section['.name'], section: section['.name'], comment: section.comment,
+  cells: { name: section['.name'], lines: String(String(section.source ?? '').split('\n').filter(line => line.trim()).length), source: firstLine(section.source) }
+ })),
+ itemTitle: row => `Script <${row?.key ?? 'new'}>`,
+ itemStatus: row => [`${row.cells.lines} lines`],
+ canAdd: () => true,
+ canRemove: () => true,
+ canComment: () => true,
+ fields: (data, row) => [
+  { id: 'name', label: 'Name', type: row ? 'static' : 'text', placeholder: 'letters, digits and _' },
+  { id: 'source', label: 'Source', type: 'textarea', wide: true },
+  { id: 'how', label: '', type: 'note', value: values => values.name ? `Run it with Run Script, from the scheduler or Netwatch: ${RUN_SCRIPT} ${values.name}` : 'Saved scripts can run from the scheduler or Netwatch.' }
+ ],
+ values: (row, data) => ({ name: row.key, source: data['uci:routerdeck']?.[row.section]?.source ?? '' }),
+ defaults: () => ({ name: '', source: '' }),
+ copy: values => ({ ...values, name: '' }),
+ save(values, row, data) {
+  const source = String(values.source ?? '').replace(/\r\n?/g, '\n');
+  if (!source.trim()) invalid('source', 'Enter the commands of the script');
+  if (source.length > 65536) invalid('source', 'A script is up to 64 KiB');
+  if (row) return { description: `Change script ${row.key}`, ops: [{ op: 'set', config: 'routerdeck', section: row.section, values: { source } }] };
+  const name = String(values.name ?? '').trim();
+  if (!NAME.test(name)) invalid('name', 'Use letters, digits and _');
+  if (data['uci:routerdeck']?.[name]) invalid('name', `${name} is already used in /etc/config/routerdeck`);
+  return { description: `Add script ${name}`, ops: [{ op: 'add', config: 'routerdeck', type: 'script', name, values: { source } }] };
+ },
+ findCreated: (rows, values) => rows.find(row => row.key === values.name),
+ remove: rows => ({ description: `Remove script ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'delete', config: 'routerdeck', section: row.section })) }),
+ comment: (rows, comment) => ({ description: `Comment script ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'routerdeck', section: row.section, values: { comment: comment || null } })) }),
+ tools: [{ id: 'run', label: 'Run Script', enabled: rows => rows.length === 1, run: rows => ({ job: { title: `Script ${rows[0].key}`, task: { tool: 'script', name: rows[0].key } } }) }]
+};
+
+const JOB_TITLE = { script: job => `script ${job.name}`, package: job => `${(OPERATION[job.operation] ?? job.operation ?? '').toLowerCase()} ${(job.names ?? []).join(' ')}`.trim() };
+
+// Scripts and package operations running on the router right now. Ages
+// come from the router's clock, which may differ from this computer's.
+export const scriptJobs = {
+ id: 'system-script-jobs',
+ noun: 'Job',
+ readOnly: true,
+ sources: ['jobs'],
+ columns: [
+  { id: 'type', label: 'Type', width: 80 },
+  { id: 'what', label: 'What', width: 300 },
+  { id: 'running', label: 'Running For', width: 110, sort: (value, row) => row.age ?? 0 }
+ ],
+ defaultSort: null,
+ status: () => 'Scripts keep running when their window is closed',
+ rows: data => (data.jobs?.jobs ?? []).filter(job => JOB_TITLE[job.tool]).map(job => {
+  const age = Number.isFinite(job.started) && Number.isFinite(data.jobs.now) ? Math.max(0, data.jobs.now - job.started) : null;
+  return { key: job.id, readOnly: true, job, age, cells: { type: job.tool, what: JOB_TITLE[job.tool](job), running: age === null ? '' : uptime(age) } };
+ }),
+ itemTitle: row => `Job <${row.cells.what}>`,
+ fields: () => [{ id: 'type', label: 'Type', type: 'static' }, { id: 'what', label: 'What', type: 'static' }, { id: 'running', label: 'Running For', type: 'static' }],
+ values: row => ({ ...row.cells }),
+ tools: [
+  { id: 'output', label: 'Show Output', cli: false, enabled: rows => rows.length === 1, run: rows => ({ job: { title: rows[0].cells.what, attach: rows[0].key } }) },
+  { id: 'stop', label: 'Stop', enabled: rows => rows.length > 0 && rows.every(row => row.job.tool === 'script'), run: rows => ({ calls: rows.map(row => ['routerdeck', 'task', { action: 'stop', id: row.key }]), notice: `Stopped ${rows.map(row => row.cells.what).join(', ')}` }) }
+ ]
+};
+
 /* --- Startup (procd services) ------------------------------------------ */
 
 const rc = (rows, action, label) => ({
@@ -365,6 +510,9 @@ export const resources = {
  values: () => ({})
 };
 
+export const BACKUP_UPLOAD = '/tmp/routerdeck-backup.tar.gz';
+export const FIRMWARE_UPLOAD = '/tmp/routerdeck-firmware.bin';
+
 export const backup = {
  id: 'system-backup',
  noun: 'Backup',
@@ -373,11 +521,64 @@ export const backup = {
  sources: ['board'],
  rows: () => [{ key: 'backup', section: 'backup' }],
  itemTitle: () => 'Backup',
- itemStatus: () => ['sysupgrade -b'],
- fields: () => [{ id: 'note', label: '', type: 'note', value: () => 'The backup holds /etc/config and the other files sysupgrade keeps, passwords and keys included, so store it safely. Restore it in LuCI (System ▸ Backup / Flash Firmware) or with sysupgrade -r.' }],
+ itemStatus: () => ['sysupgrade -b / -r'],
+ fields: () => [{ id: 'note', label: '', type: 'note', value: () => 'The backup holds /etc/config and the other files sysupgrade keeps, passwords and keys included, so store it safely. Restoring one replaces the configuration and reboots the router; Undo cannot take it back.' }],
  values: () => ({}),
- tools: [{
-  id: 'download', label: 'Download Backup', enabled: () => true,
-  run: (rows, data) => ({ description: 'Download a backup', download: { url: '/cgi-bin/cgi-backup', filename: `backup-${data.board?.hostname ?? 'router'}-${new Date().toISOString().slice(0, 10)}.tar.gz` } })
- }]
+ tools: [
+  {
+   id: 'download', label: 'Download Backup', enabled: () => true,
+   run: (rows, data) => ({ description: 'Download a backup', download: { url: '/cgi-bin/cgi-backup', filename: `backup-${data.board?.hostname ?? 'router'}-${new Date().toISOString().slice(0, 10)}.tar.gz` } })
+  },
+  {
+   id: 'restore', label: 'Restore Backup…', enabled: () => true,
+   run: () => ({
+    upload: { path: BACKUP_UPLOAD, accept: '.tar.gz,.tgz,application/gzip' },
+    check: ['routerdeck', 'restore', { action: 'check' }],
+    confirm: result => ({ title: 'Restore Backup', text: `Restore ${result.count} files from this backup and reboot? The current configuration is replaced. Undo and Safe Mode cannot take this back.`, submitLabel: 'Restore and Reboot' }),
+    cancel: ['routerdeck', 'restore', { action: 'discard' }],
+    call: ['routerdeck', 'restore', { action: 'apply' }],
+    notice: 'The backup was restored; the router is rebooting', tone: 'warning'
+   })
+  }
+ ]
+};
+
+const kib = size => Number.isFinite(size) ? bytes(size) : 'an unknown size';
+
+export function firmwareQuestion(result, keep) {
+ return {
+  title: 'Flash Firmware',
+  text: `The router accepted this image (${kib(result.size)}, SHA-256 ${String(result.sha256 ?? '').slice(0, 16)}…). Flash it ${keep && result.allow_backup ? 'and keep the settings' : 'and erase the settings'}? The router reboots when it is done; do not power it off meanwhile.`,
+  submitLabel: 'Flash'
+ };
+}
+
+// sysupgrade checks the image first; one the router rejects is never flashed.
+export const firmware = {
+ id: 'system-firmware',
+ noun: 'Firmware',
+ singleton: true,
+ sources: ['board'],
+ action: { label: 'Upload…' },
+ rows: data => data.board ? [{ key: 'firmware', section: 'firmware' }] : [],
+ itemTitle: () => 'Firmware',
+ itemStatus: () => ['sysupgrade'],
+ fields: data => [
+  { id: 'current', label: 'Current', type: 'static', value: () => data.board?.release?.description ?? '—' },
+  { id: 'target', label: 'Target', type: 'static', value: () => data.board?.release?.target ?? '—' },
+  { id: 'board', label: 'Board', type: 'static', value: () => data.board?.board_name ?? '—' },
+  { id: 'keep', label: 'Keep Settings', type: 'bool' },
+  { id: 'note', label: '', type: 'note', value: () => 'Choose a sysupgrade image built for this board. The router checks it before anything is flashed, and you confirm once more. Flashing reboots the router; Undo and Safe Mode cannot take it back.' }
+ ],
+ values: () => ({ keep: true }),
+ defaults: () => ({ keep: true }),
+ save: values => ({
+  upload: { path: FIRMWARE_UPLOAD, accept: '.bin,.img,.itb,.gz,.trx,.chk' },
+  check: ['routerdeck', 'firmware', { action: 'check' }],
+  reject: result => result.valid ? null : `The router rejected this image${Object.entries(result.tests ?? {}).some(([, passed]) => !passed) ? ` (failed: ${Object.entries(result.tests).filter(([, passed]) => !passed).map(([name]) => name).join(', ')})` : ''}; it was not flashed`,
+  confirm: result => firmwareQuestion(result, values.keep),
+  cancel: ['routerdeck', 'firmware', { action: 'discard' }],
+  call: ['routerdeck', 'firmware', { action: 'flash', keep: !!values.keep }],
+  notice: 'Flashing the firmware; the router reboots when it is done', tone: 'warning'
+ })
 };

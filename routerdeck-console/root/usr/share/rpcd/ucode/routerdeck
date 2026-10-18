@@ -10,7 +10,7 @@
 // Functions are defined before their callers: ucode does not hoist them.
 'use strict';
 
-import { access, readfile, writefile, unlink, open, lsdir, stat, mkdir, rmdir } from 'fs';
+import { access, readfile, writefile, unlink, open, lsdir, stat, lstat, readlink, mkdir, rmdir } from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import {
@@ -279,6 +279,45 @@ function int_in(value, low, high, fallback) {
 
 const NETWORK = /^([0-9]{1,3}\.){3}[0-9]{1,3}\/(2[2-9]|30)$/;
 
+// Creates the job directory with its arguments and extra files, then starts
+// the runner in the background.
+function job_start(job, files) {
+	ensure_dirs();
+	if (job_sweep() >= JOB_LIMIT)
+		return failure('busy', 'Too many tools are running; stop one first');
+	let id = job_id(), dir = DIAG + '/' + id;
+	if (length(id) != 16 || !mkdir(dir, 0700))
+		return failure('failed', 'Could not create the job');
+	for (let name, text in files ?? {})
+		writefile(dir + '/' + name, text);
+	write_json(dir + '/args.json', { ...job, started: time() });
+	writefile(dir + '/seen', sprintf('%d', time()));
+	let code = system([ '/bin/sh', '-c', sprintf('%s %s </dev/null >/dev/null 2>&1 & echo $! >%s/pid', RUNNER, dir, dir) ]);
+	if (code != 0) {
+		job_remove(dir);
+		return failure('failed', 'Could not start ' + job.tool);
+	}
+	return { ok: true, id, ...job };
+}
+
+function job_args(dir) {
+	let args = read_json(dir + '/args.json', null);
+	return type(args) == 'object' ? args : {};
+}
+
+// Running jobs, for the Scripts window's Jobs tab and the package lock.
+function job_list() {
+	let jobs = [];
+	for (let id in lsdir(DIAG) ?? []) {
+		let dir = DIAG + '/' + id;
+		if (!job_alive(dir))
+			continue;
+		let args = job_args(dir);
+		push(jobs, { id, tool: args.tool, started: args.started, host: args.host, name: args.name, operation: args.operation, names: args.names });
+	}
+	return jobs;
+}
+
 function diag_start(args) {
 	if (!(args.tool in [ 'ping', 'traceroute', 'bandwidth', 'scan' ]))
 		return failure('invalid', 'Unknown tool');
@@ -286,11 +325,8 @@ function diag_start(args) {
 		return failure('missing', 'Bandwidth tests need the iperf3 package');
 	if (args.tool == 'scan' ? type(args.network) != 'string' || !match(args.network, NETWORK) : args.tool == 'bandwidth' && args.mode == 'server' ? false : type(args.host) != 'string' || !match(args.host, HOST))
 		return failure('invalid', args.tool == 'scan' ? 'Enter a network from /22 to /30, such as 192.168.1.0/24' : 'Enter an address or host name');
-	ensure_dirs();
-	if (job_sweep() >= JOB_LIMIT)
-		return failure('busy', 'Too many pings and traceroutes are running; stop one first');
 	// Below 16 data bytes busybox ping cannot measure the round-trip time.
-	let job = {
+	return job_start({
 		tool: args.tool, host: args.host, family: args.family == 4 || args.family == 6 ? args.family : 0,
 		size: int_in(args.size, 16, 65500, 56), count: int_in(args.count, 0, 100000, 0),
 		interval: int_in(args.interval, 200, 60000, 1000), timeout: int_in(args.timeout, 1, 10, 1),
@@ -298,18 +334,7 @@ function diag_start(args) {
 		mode: args.mode == 'server' ? 'server' : 'client', direction: args.direction in [ 'receive', 'both' ] ? args.direction : 'send',
 		duration: int_in(args.duration, 1, 300, 10), port: int_in(args.port, 1, 65535, 5201), bitrate: int_in(args.bitrate, 0, 10000000, 0),
 		network: args.tool == 'scan' ? args.network : null
-	};
-	let id = job_id(), dir = DIAG + '/' + id;
-	if (length(id) != 16 || !mkdir(dir, 0700))
-		return failure('failed', 'Could not create the job');
-	write_json(dir + '/args.json', job);
-	writefile(dir + '/seen', sprintf('%d', time()));
-	let code = system([ '/bin/sh', '-c', sprintf('%s %s </dev/null >/dev/null 2>&1 & echo $! >%s/pid', RUNNER, dir, dir) ]);
-	if (code != 0) {
-		job_remove(dir);
-		return failure('failed', 'Could not start ' + args.tool);
-	}
-	return { ok: true, id, ...job };
+	});
 }
 
 // Returns the complete result lines from `from` on; a line still being
@@ -337,8 +362,14 @@ function diag(args) {
 		return diag_start(args);
 	if (args.action == 'poll')
 		return diag_poll(args);
+	if (args.action == 'list')
+		return { ok: true, now: time(), jobs: job_list() };
 	if (args.action == 'stop') {
 		let dir = job_dir(args);
+		// Package operations and scripts are changes: Task stops scripts,
+		// and nothing interrupts a package manager halfway.
+		if (dir && job_args(dir).tool in [ 'package', 'script' ])
+			return failure('denied', 'Stop scripts from the Scripts window');
 		if (dir) {
 			writefile(dir + '/stop', '');
 			// A tool waiting for input (an iperf3 server) is ended directly.
@@ -525,6 +556,51 @@ function field_of(text, key) {
 	return null;
 }
 
+// Newer versions in the package lists from the last update; the lists live
+// in RAM, so after a reboot there are none until the next update. apk names
+// a package with its version ("name-1.2-r1"), so the name is the longest
+// installed name the old version starts with.
+function upgradable(manager, installed) {
+	// While a package operation runs, the last list is shown: opkg would
+	// refuse the operation if listing updates held its lock.
+	for (let job in job_list())
+		if (job.tool == 'package')
+			return read_json(RUN + '/upgradable.json', {});
+	let found = {};
+	if (manager == 'apk') {
+		for (let line in split(run('apk list --upgradable 2>/dev/null').output, '\n')) {
+			// POSIX brackets take no escapes, so the closing "]" is trimmed.
+			let item = match(line, /^([^ ]+) .*\[upgradable from: ([^ ]+)$/);
+			if (!item)
+				continue;
+			item[2] = rtrim(item[2], ']');
+			for (let i = length(item[2]) - 2; i > 0; i--) {
+				let name = substr(item[2], 0, i);
+				if (substr(item[2], i, 1) == '-' && match(substr(item[2], i + 1, 1), /[0-9]/) && installed[name] && substr(item[1], 0, i + 1) == name + '-') {
+					found[name] = substr(item[1], i + 1);
+					break;
+				}
+			}
+		}
+	}
+	else {
+		for (let line in split(run('opkg list-upgradable 2>/dev/null').output, '\n')) {
+			let item = match(line, /^([^ ]+) - ([^ ]+) - ([^ ]+)$/);
+			if (item)
+				found[item[1]] = item[3];
+		}
+	}
+	write_json(RUN + '/upgradable.json', found);
+	return found;
+}
+
+function names_of(list) {
+	let names = {};
+	for (let entry in list)
+		names[entry.name] = true;
+	return names;
+}
+
 // Installed packages from apk's database (25.12) or opkg's status (24.10).
 function packages() {
 	let list = [];
@@ -547,7 +623,7 @@ function packages() {
 				push(list, entry);
 			}
 		}
-		return { manager: 'apk', packages: list };
+		return { manager: 'apk', packages: list, upgradable: upgradable('apk', names_of(list)) };
 	}
 	let status = readfile('/usr/lib/opkg/status');
 	if (status != null) {
@@ -561,9 +637,216 @@ function packages() {
 				size: int(field_of(control, 'Installed-Size') ?? '0') || null, description: field_of(control, 'Description')
 			});
 		}
-		return { manager: 'opkg', packages: list };
+		return { manager: 'opkg', packages: list, upgradable: upgradable('opkg', names_of(list)) };
 	}
 	return { manager: null, packages: [] };
+}
+
+/* --- Package operations and scripts ------------------------------------ */
+
+const PACKAGE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$/;
+const OPERATIONS = [ 'update', 'install', 'remove', 'upgrade' ];
+
+function package_manager() {
+	if (executable('/usr/bin/apk'))
+		return 'apk';
+	if (executable('/bin/opkg') || executable('/usr/bin/opkg'))
+		return 'opkg';
+	return null;
+}
+
+// A script's commands run as children of its shell and keep its output
+// open, so Stop ends the whole tree, children first.
+function kill_tree(pid) {
+	let children = {};
+	for (let name in lsdir('/proc') ?? []) {
+		let parent = match(readfile('/proc/' + name + '/stat') ?? '', /^[0-9]+ \(.*\) [A-Za-z] ([0-9]+)/);
+		if (parent && match(name, /^[0-9]+$/))
+			push(children[parent[1]] ??= [], name);
+	}
+	let order = [], queue = [ pid ];
+	while (length(queue)) {
+		let next = shift(queue);
+		unshift(order, next);
+		push(queue, ...(children[next] ?? []));
+	}
+	for (let target in order)
+		system([ 'kill', target ]);
+}
+
+// Package operations and scripts run as jobs like Ping, with their output
+// streamed line by line. Only one package operation runs at a time: both
+// package managers lock their database.
+function task(args) {
+	if (args.action == 'stop') {
+		let dir = job_dir(args);
+		let child = dir && job_args(dir).tool == 'script' ? trim(readfile(dir + '/child.pid') ?? '') : '';
+		if (match(child, /^[0-9]+$/)) {
+			writefile(dir + '/stop', '');
+			kill_tree(child);
+		}
+		return { ok: true };
+	}
+	if (args.tool == 'package') {
+		let manager = package_manager();
+		if (!manager)
+			return failure('missing', 'This router has no package manager');
+		if (!(args.operation in OPERATIONS))
+			return failure('invalid', 'Unknown package operation');
+		let names = args.operation == 'update' ? [] : type(args.names) == 'array' ? args.names : [];
+		if (args.operation != 'update' && (!length(names) || length(names) > 50 || length(filter(names, name => type(name) != 'string' || !match(name, PACKAGE)))))
+			return failure('invalid', 'Enter package names such as tcpdump');
+		for (let job in job_list())
+			if (job.tool == 'package')
+				return failure('busy', 'Another package operation is running; wait for it to finish');
+		return job_start({ tool: 'package', manager, operation: args.operation, names });
+	}
+	if (args.tool == 'script') {
+		if (type(args.name) != 'string' || !match(args.name, NAME))
+			return failure('invalid', 'Choose a script');
+		let ctx = cursor();
+		ctx.load('routerdeck');
+		if (ctx.get('routerdeck', args.name) != 'script')
+			return failure('missing', sprintf('There is no script %s', args.name));
+		return job_start({ tool: 'script', name: args.name }, { 'script.sh': ctx.get('routerdeck', args.name, 'source') ?? '' });
+	}
+	return failure('invalid', 'Unknown task');
+}
+
+/* --- Files ------------------------------------------------------------- */
+
+// Absolute paths without "." or ".." segments.
+function clean_path(path) {
+	if (type(path) != 'string' || substr(path, 0, 1) != '/' || length(path) > 1024 || index(path, '\0') >= 0)
+		return null;
+	let parts = filter(split(path, '/'), part => part != '' && part != '.');
+	if ('..' in parts)
+		return null;
+	return '/' + join('/', parts);
+}
+
+// Kernel and device file systems, and the read-only image, are never changed.
+const PROTECTED = /^\/(proc|sys|dev|rom)(\/|$)/;
+const FILE_LIMIT = 2000;
+
+function files(args) {
+	let path = clean_path(args.path ?? '/');
+	if (!path)
+		return failure('invalid', 'Enter an absolute path such as /tmp');
+	if (stat(path)?.type != 'directory')
+		return failure('missing', sprintf('%s is not a directory', path));
+	let entries = [], names = lsdir(path) ?? [];
+	for (let name in slice(sort(names), 0, FILE_LIMIT)) {
+		let full = (path == '/' ? '' : path) + '/' + name;
+		let info = lstat(full);
+		if (!info)
+			continue;
+		let entry = { name, type: info.type, size: info.size, mtime: info.mtime, mode: info.mode & 4095 };
+		if (info.type == 'link') {
+			entry.link = readlink(full);
+			entry.target = stat(full)?.type;
+		}
+		push(entries, entry);
+	}
+	return { ok: true, path, entries, truncated: length(names) > FILE_LIMIT };
+}
+
+function file_remove(args) {
+	let path = clean_path(args.path);
+	if (!path || path == '/' || match(path, PROTECTED))
+		return failure('denied', sprintf('%s cannot be removed here', args.path));
+	let info = lstat(path);
+	if (!info)
+		return failure('missing', sprintf('%s no longer exists', path));
+	if (info.type == 'directory') {
+		if (length(lsdir(path) ?? []))
+			return failure('not-empty', sprintf('%s is not empty', path));
+		return rmdir(path) ? { ok: true } : failure('failed', sprintf('Could not remove %s', path));
+	}
+	return unlink(path) ? { ok: true } : failure('failed', sprintf('Could not remove %s', path));
+}
+
+function file_mkdir(args) {
+	let path = clean_path(args.path);
+	if (!path || match(path, PROTECTED))
+		return failure('denied', sprintf('%s cannot be created here', args.path));
+	if (lstat(path))
+		return failure('exists', sprintf('%s already exists', path));
+	return mkdir(path, 0755) ? { ok: true } : failure('failed', sprintf('Could not create %s', path));
+}
+
+/* --- Backup restore, firmware and reset ---------------------------------- */
+
+// The console uploads files here with cgi-io, as LuCI does to its own names.
+const UPLOADS = { backup: '/tmp/routerdeck-backup.tar.gz', firmware: '/tmp/routerdeck-firmware.bin' };
+
+function restore(args) {
+	let file = UPLOADS.backup;
+	if (args.action == 'discard') {
+		unlink(file);
+		return { ok: true };
+	}
+	if (!access(file))
+		return failure('missing', 'Upload a backup first');
+	let listing = run(sprintf('tar -tzf %s', file));
+	let names = filter(split(listing.output, '\n'), length);
+	if (listing.code != 0 || !length(filter(names, name => match(name, /^(\.\/)?etc\//)))) {
+		unlink(file);
+		return failure('invalid', 'This is not a configuration backup (a .tar.gz of files from /etc)');
+	}
+	if (args.action == 'check')
+		return { ok: true, size: stat(file)?.size, count: length(names), files: slice(names, 0, 500) };
+	if (args.action != 'apply')
+		return failure('invalid', 'Unknown action');
+	if (safe_state())
+		return failure('safemode', 'Leave Safe Mode before restoring a backup');
+	let result = run(sprintf('/sbin/sysupgrade -r %s', file));
+	if (result.code != 0)
+		return failure('failed', trim(result.output) || 'sysupgrade could not restore the backup');
+	unlink(file);
+	log_message('Configuration restored from a backup; rebooting');
+	system('(sleep 2; /sbin/reboot) >/dev/null 2>&1 &');
+	return { ok: true, rebooting: true };
+}
+
+function firmware(args) {
+	let file = UPLOADS.firmware;
+	if (args.action == 'discard') {
+		unlink(file);
+		return { ok: true };
+	}
+	if (!access(file))
+		return failure('missing', 'Upload a firmware image first');
+	let bus = connect();
+	let check = bus?.call('system', 'validate_firmware_image', { path: file });
+	bus?.disconnect();
+	if (args.action == 'check') {
+		let sum = match(run(sprintf('sha256sum %s', file)).output, /^([0-9a-f]{64})/);
+		return { ok: true, size: stat(file)?.size, sha256: sum?.[1], valid: check?.valid == true, forceable: check?.forceable == true, allow_backup: check?.allow_backup != false, tests: check?.tests ?? {} };
+	}
+	if (args.action != 'flash')
+		return failure('invalid', 'Unknown action');
+	// The console never forces an image the router itself rejects.
+	if (check?.valid != true)
+		return failure('invalid', 'The router rejected this image, so it is not flashed');
+	if (safe_state())
+		return failure('safemode', 'Leave Safe Mode before flashing firmware');
+	let keep = args.keep != false && check.allow_backup != false;
+	log_message(sprintf('Flashing new firmware, %s the configuration', keep ? 'keeping' : 'without'));
+	system(sprintf('(sleep 1; /sbin/sysupgrade %s%s) >/dev/null 2>&1 &', keep ? '' : '-n ', file));
+	return { ok: true, keep };
+}
+
+// firstboot needs the overlay of squashfs images; on a writable root file
+// system there is no factory state to go back to.
+function reset() {
+	if (safe_state())
+		return failure('safemode', 'Leave Safe Mode before resetting the configuration');
+	if (index(readfile('/proc/mounts') ?? '', ' /overlay ') < 0)
+		return failure('unsupported', 'This router keeps its root file system writable instead of on an overlay, so it has no factory defaults to reset to');
+	log_message('Resetting the configuration to the defaults; rebooting');
+	system('(sleep 1; /sbin/firstboot -y && /sbin/reboot) >/dev/null 2>&1 &');
+	return { ok: true, rebooting: true };
 }
 
 /* --- Terminal ----------------------------------------------------------- */
@@ -631,9 +914,10 @@ function new_problems(before, after) {
 	return filter(after.problems, line => !(replace(line, /@[a-z_]+\[[0-9]+\]/g, '@') in known));
 }
 
-function valid_value(value) {
+// Values are one line, except the source of a script.
+function valid_value(value, multiline) {
 	if (type(value) == 'string')
-		return length(value) <= 4096 && index(value, '\n') < 0;
+		return length(value) <= (multiline ? 65536 : 4096) && (multiline || index(value, '\n') < 0);
 	if (type(value) != 'array' || length(value) > 256)
 		return false;
 	for (let item in value)
@@ -671,7 +955,7 @@ function stage(ctx, ops) {
 		if (type(values) != 'object')
 			return failure('invalid', 'Values must be an object');
 		for (let key, value in values)
-			if (!match(key, NAME) || !(value == null || valid_value(value)))
+			if (!match(key, NAME) || !(value == null || valid_value(value, config == 'routerdeck' && key == 'source')))
 				return failure('invalid', sprintf('Invalid value for %s', key));
 
 		let section;
@@ -969,6 +1253,9 @@ return {
 						rc: 'rc' in objects,
 						cron: executable('/usr/sbin/crond'),
 						backup: executable('/www/cgi-bin/cgi-backup'),
+						upload: executable('/www/cgi-bin/cgi-upload') && executable('/www/cgi-bin/cgi-download'),
+						packages: package_manager(),
+						sysupgrade: executable('/sbin/sysupgrade'),
 						wireguard: executable('/usr/bin/wg'),
 						upnp: executable('/usr/sbin/miniupnpd'),
 						ddns: executable('/usr/lib/ddns/dynamic_dns_updater.sh'),
@@ -1000,6 +1287,33 @@ return {
 		diag: {
 			args: { action: 'action', id: 'id', tool: 'tool', host: 'host', family: 4, size: 4, count: 4, interval: 4, timeout: 4, max: 4, protocol: 'protocol', from: 4, mode: 'mode', direction: 'direction', duration: 4, port: 4, bitrate: 4, network: 'network' },
 			call: request => diag(request.args)
+		},
+		task: {
+			args: { action: 'action', id: 'id', tool: 'tool', operation: 'operation', names: [], name: 'name' },
+			call: request => task(request.args)
+		},
+		files: {
+			args: { path: 'path' },
+			call: request => files(request.args)
+		},
+		file_remove: {
+			args: { path: 'path' },
+			call: request => file_remove(request.args)
+		},
+		file_mkdir: {
+			args: { path: 'path' },
+			call: request => file_mkdir(request.args)
+		},
+		restore: {
+			args: { action: 'action' },
+			call: request => restore(request.args)
+		},
+		firmware: {
+			args: { action: 'action', keep: true },
+			call: request => firmware(request.args)
+		},
+		reset: {
+			call: () => reset()
 		},
 		history: {
 			call: () => history_summary()

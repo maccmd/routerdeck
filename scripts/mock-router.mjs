@@ -492,14 +492,160 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    jobs.set(id, { args: job, started: now(), stopped: null });
    return { ok: true, id, ...job };
   }
+  if (args.action === 'list') {
+   settle();
+   const running = [...jobs].filter(([, job]) => ['package', 'script'].includes(job.args.tool) ? taskResults(job).at(-1)?.exit === undefined : !job.stopped);
+   return { ok: true, now: Math.floor(now() / 1000), jobs: running.map(([id, job]) => ({ id, tool: job.args.tool, started: Math.floor(job.started / 1000), host: job.args.host, name: job.args.name, operation: job.args.operation, names: job.args.names })) };
+  }
   const job = jobs.get(args.id);
-  if (args.action === 'stop') { if (job && !job.stopped) job.stopped = now(); return { ok: true }; }
+  if (args.action === 'stop') {
+   if (job && ['package', 'script'].includes(job.args.tool)) return { ok: false, error: 'denied', message: 'Stop scripts from the Scripts window' };
+   if (job && !job.stopped) job.stopped = now();
+   return { ok: true };
+  }
   if (args.action !== 'poll') return { ok: false, error: 'invalid', message: 'Unknown action' };
   if (!job) return { ok: false, error: 'gone', message: 'This job has ended' };
+  if (['package', 'script'].includes(job.args.tool)) {
+   const results = taskResults(job), from = Number.isInteger(args.from) ? args.from : 0;
+   settle();
+   return { ok: true, running: results.at(-1)?.exit === undefined, results: results.slice(from), next: results.length };
+  }
   const results = jobResults(job), from = Number.isInteger(args.from) ? args.from : 0;
   const finished = results.some(item => item.error) || (job.args.tool === 'bandwidth' ? job.args.mode === 'client' && results.some(item => item.summary === 'receiver') : job.args.tool === 'scan' ? results.some(item => item.macs) : job.args.count && results.length - 1 >= job.args.count);
   return { ok: true, running: !job.stopped && !finished, results: results.slice(from), next: results.length };
  }
+
+ // Package operations and scripts: one output line every 200 ms, then the
+ // exit code. A finished package operation changes the installed list once.
+ const REPOSITORY = { tcpdump: ['4.99.6-r1', 'Network monitoring and data acquisition tool', 410000, ['libpcap1']], libpcap1: ['1.10.6-r1', 'Low-level packet capture library', 180000, []], iperf3: ['3.19-r1', 'Internet Protocol bandwidth measuring tool', 98000, []], nano: ['8.4-r1', 'An enhanced clone of the Pico text editor', 150000, []], ttyd: ['1.7.7-r2', 'Share your terminal over the web', 90000, []] };
+ function taskLines(job) {
+  const { args } = job;
+  if (args.tool === 'script') {
+   const source = configs.routerdeck[args.name]?.source ?? '';
+   const lines = [], exit = /^\s*exit (\d+)/m.exec(source);
+   for (const line of source.split('\n')) { const echo = /^\s*echo (.*)$/.exec(line); if (echo) lines.push({ line: echo[1].replace(/^["']|["']$/g, '') }); }
+   return [...lines, { exit: exit ? Number(exit[1]) : 0 }];
+  }
+  const command = `apk ${{ update: 'update', install: 'add', remove: 'del', upgrade: 'upgrade' }[args.operation]} ${args.names.join(' ')}`.trim();
+  if (args.operation === 'update') return [{ command }, { line: ' [https://downloads.openwrt.org/releases/25.12.5/packages/aarch64_generic/base/packages.adb]' }, { line: ' [https://downloads.openwrt.org/releases/25.12.5/packages/aarch64_generic/packages/packages.adb]' }, { line: 'OK: 9871 distinct packages available' }, { exit: 0 }];
+  if (args.operation === 'install') {
+   const missing = args.names.filter(name => !REPOSITORY[name] && !packageList.some(item => item.name === name));
+   if (missing.length) return [{ command }, { line: `ERROR: unable to select packages:` }, ...missing.map(name => ({ line: `  ${name} (no such package):` })), { exit: 1 }];
+   const wanted = [...new Set(args.names.flatMap(name => [...(REPOSITORY[name]?.[3] ?? []), name]))].filter(name => !packageList.some(item => item.name === name));
+   return [{ command }, ...wanted.map((name, index) => ({ line: `(${index + 1}/${wanted.length}) Installing ${name} (${REPOSITORY[name][0]})` })), { line: `OK: 27.4 MiB in ${packageList.length + wanted.length} packages` }, { exit: 0 }];
+  }
+  if (args.operation === 'remove') {
+   const needed = args.names.find(name => ['busybox', 'libubox20260213', 'rpcd'].includes(name));
+   if (needed) return [{ command }, { line: `ERROR: ${needed} is required by other packages` }, { exit: 1 }];
+   return [{ command }, ...args.names.map((name, index) => ({ line: `(${index + 1}/${args.names.length}) Purging ${name}` })), { line: 'OK: 26.8 MiB' }, { exit: 0 }];
+  }
+  return [{ command }, ...args.names.map((name, index) => ({ line: `(${index + 1}/${args.names.length}) Upgrading ${name} (${packageList.find(item => item.name === name)?.version} -> ${upgradable[name]})` })), { line: 'OK' }, { exit: 0 }];
+ }
+ function taskResults(job) {
+  const lines = taskLines(job);
+  const shown = job.stopped ? Math.floor((job.stopped - job.started) / 200) : Math.floor((now() - job.started) / 200) + 1;
+  if (job.stopped && shown < lines.length) return [...lines.slice(0, shown).filter(item => item.exit === undefined), { exit: 143, stopped: true }];
+  return lines.slice(0, shown);
+ }
+ function settle() {
+  for (const job of jobs.values()) {
+   if (job.args.tool !== 'package' || job.applied || job.stopped) continue;
+   const results = taskResults(job);
+   if (results.at(-1)?.exit === undefined) continue;
+   job.applied = true;
+   if (results.at(-1).exit !== 0) continue;
+   const { operation, names } = job.args;
+   if (operation === 'install') for (const name of results.filter(item => /Installing (\S+)/.test(item.line ?? '')).map(item => /Installing (\S+)/.exec(item.line)[1])) packageList.push({ name, version: REPOSITORY[name][0], description: REPOSITORY[name][1], size: REPOSITORY[name][2], requested: names.includes(name) });
+   if (operation === 'remove') packageList = packageList.filter(item => !names.includes(item.name));
+   if (operation === 'upgrade') for (const name of names) { const item = packageList.find(entry => entry.name === name); if (item && upgradable[name]) { item.version = upgradable[name]; delete upgradable[name]; } }
+  }
+ }
+ function task(args) {
+  if (args.action === 'stop') { const job = jobs.get(args.id); if (job?.args.tool === 'script' && !job.stopped) job.stopped = now(); return { ok: true }; }
+  if (args.tool === 'package') {
+   if (!['update', 'install', 'remove', 'upgrade'].includes(args.operation)) return { ok: false, error: 'invalid', message: 'Unknown package operation' };
+   const names = args.operation === 'update' ? [] : Array.isArray(args.names) ? args.names : [];
+   if (args.operation !== 'update' && (!names.length || names.some(name => !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$/.test(name)))) return { ok: false, error: 'invalid', message: 'Enter package names such as tcpdump' };
+   settle();
+   if ([...jobs.values()].some(job => job.args.tool === 'package' && !job.applied && !job.stopped)) return { ok: false, error: 'busy', message: 'Another package operation is running; wait for it to finish' };
+   const id = (++serial).toString(16).padStart(16, '0');
+   jobs.set(id, { args: { tool: 'package', manager: 'apk', operation: args.operation, names }, started: now(), stopped: null });
+   return { ok: true, id, tool: 'package', manager: 'apk', operation: args.operation, names };
+  }
+  if (args.tool === 'script') {
+   if (configs.routerdeck[args.name]?.['.type'] !== 'script') return { ok: false, error: 'missing', message: `There is no script ${args.name}` };
+   const id = (++serial).toString(16).padStart(16, '0');
+   jobs.set(id, { args: { tool: 'script', name: args.name }, started: now(), stopped: null });
+   return { ok: true, id, tool: 'script', name: args.name };
+  }
+  return { ok: false, error: 'invalid', message: 'Unknown task' };
+ }
+
+ /* A small file system for the Files window and uploads. */
+ const fileSystem = new Map();
+ const mtime = Math.floor(started / 1000) - 86400;
+ const addFile = (path, content, mode = 0o644) => fileSystem.set(path, { type: 'file', content: Buffer.from(content), mtime, mode });
+ for (const dir of ['/', '/etc', '/etc/config', '/etc/crontabs', '/tmp', '/root', '/www', '/proc', '/usr']) fileSystem.set(dir, { type: 'directory', mtime, mode: 0o755 });
+ for (const config of ['network', 'firewall', 'dhcp', 'system', 'wireless']) addFile(`/etc/config/${config}`, `# ${config} of the simulated router\n`, 0o600);
+ addFile('/etc/banner', '  RouterDeck preview\n');
+ addFile('/tmp/dhcp.leases', CLIENTS.map(client => `0 ${client.macaddr} ${client.ipaddr} ${client.hostname ?? '*'} *`).join('\n') + '\n');
+ fileSystem.set('/etc/localtime', { type: 'link', link: '/tmp/localtime', mtime, mode: 0o777 });
+ const parentOf = path => path.replace(/\/[^/]+$/, '') || '/';
+ const PROTECTED = /^\/(proc|sys|dev|rom)(\/|$)/;
+ function files({ path = '/' } = {}) {
+  if (!fileSystem.get(path) || fileSystem.get(path).type !== 'directory') return { ok: false, error: 'missing', message: `${path} is not a directory` };
+  const entries = [...fileSystem].filter(([name]) => name !== '/' && parentOf(name) === path).map(([name, entry]) => ({ name: name.slice(name.lastIndexOf('/') + 1), type: entry.type, size: entry.type === 'file' ? entry.content.length : 4096, mtime: entry.mtime, mode: entry.mode, ...(entry.type === 'link' ? { link: entry.link, target: null } : {}) }));
+  return { ok: true, path, entries: entries.sort((a, b) => a.name.localeCompare(b.name)), truncated: false };
+ }
+ function fileRemove({ path }) {
+  if (!path || path === '/' || PROTECTED.test(path)) return { ok: false, error: 'denied', message: `${path} cannot be removed here` };
+  const entry = fileSystem.get(path);
+  if (!entry) return { ok: false, error: 'missing', message: `${path} no longer exists` };
+  if (entry.type === 'directory' && [...fileSystem.keys()].some(name => name !== path && parentOf(name) === path)) return { ok: false, error: 'not-empty', message: `${path} is not empty` };
+  fileSystem.delete(path);
+  return { ok: true };
+ }
+ function fileMkdir({ path }) {
+  if (!path || PROTECTED.test(path)) return { ok: false, error: 'denied', message: `${path} cannot be created here` };
+  if (fileSystem.has(path)) return { ok: false, error: 'exists', message: `${path} already exists` };
+  if (fileSystem.get(parentOf(path))?.type !== 'directory') return { ok: false, error: 'failed', message: `Could not create ${path}` };
+  fileSystem.set(path, { type: 'directory', mtime: Math.floor(now() / 1000), mode: 0o755 });
+  return { ok: true };
+ }
+ // What cgi-io does for the preview server.
+ function writeFile(path, content) {
+  if (PROTECTED.test(path) || fileSystem.get(parentOf(path))?.type !== 'directory') return false;
+  fileSystem.set(path, { type: 'file', content: Buffer.from(content), mtime: Math.floor(now() / 1000), mode: 0o600 });
+  return true;
+ }
+ const readFile = path => fileSystem.get(path)?.type === 'file' ? fileSystem.get(path).content : null;
+
+ // A fake image is "valid" when it starts with this marker.
+ const FIRMWARE_MARK = 'ROUTERDECK-TEST-FIRMWARE';
+ function restore({ action }) {
+  const file = '/tmp/routerdeck-backup.tar.gz', content = readFile(file);
+  if (action === 'discard') { fileSystem.delete(file); return { ok: true }; }
+  if (!content) return { ok: false, error: 'missing', message: 'Upload a backup first' };
+  if (content[0] !== 0x1f || content[1] !== 0x8b) { fileSystem.delete(file); return { ok: false, error: 'invalid', message: 'This is not a configuration backup (a .tar.gz of files from /etc)' }; }
+  const names = ['etc/config/dhcp', 'etc/config/firewall', 'etc/config/network', 'etc/config/system', 'etc/config/wireless', 'etc/dropbear/authorized_keys', 'etc/passwd', 'etc/shadow'];
+  if (action === 'check') return { ok: true, size: content.length, count: names.length, files: names };
+  if (safe) return { ok: false, error: 'safemode', message: 'Leave Safe Mode before restoring a backup' };
+  fileSystem.delete(file);
+  lastReboot = now();
+  return { ok: true, rebooting: true };
+ }
+ function firmware({ action, keep }) {
+  const file = '/tmp/routerdeck-firmware.bin', content = readFile(file);
+  if (action === 'discard') { fileSystem.delete(file); return { ok: true }; }
+  if (!content) return { ok: false, error: 'missing', message: 'Upload a firmware image first' };
+  const valid = content.subarray(0, FIRMWARE_MARK.length).toString() === FIRMWARE_MARK;
+  if (action === 'check') return { ok: true, size: content.length, sha256: 'a'.repeat(64), valid, forceable: true, allow_backup: true, tests: { fwtool_signature: true, fwtool_device_match: valid } };
+  if (!valid) return { ok: false, error: 'invalid', message: 'The router rejected this image, so it is not flashed' };
+  if (safe) return { ok: false, error: 'safemode', message: 'Leave Safe Mode before flashing firmware' };
+  flashing = { keep: keep !== false, at: now() };
+  return { ok: true, keep: keep !== false };
+ }
+ let flashing = null;
 
  function log({ after = 0, lines = 1000 } = {}) {
   const t = Math.floor(seconds()), base = Math.floor(started / 1000) - 600;
@@ -549,6 +695,8 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   ['libubox20260213', '2026.02.13-r1', 'Basic utility library', 41000, false], ['luci', '26.288', 'LuCI interface', 0, true], ['odhcpd-ipv6only', '2025.11.20-r1', 'DHCPv6 and RA server', 98000, true],
   ['routerdeck-console', '0.1.0-r1', 'RouterDeck Console', 260000, true], ['rpcd', '2025.11.30-r1', 'OpenWrt ubus RPC backend server', 42000, true], ['uhttpd', '2025.10.03-r1', 'Tiny HTTP server', 52000, true]];
  let localOffset = 0;
+ let packageList = PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested }));
+ const upgradable = { dnsmasq: '2.91-r2', uhttpd: '2025.10.03-r2' };
 
  return {
   watchdog,
@@ -603,7 +751,9 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    return { running: Object.keys(hosts).length > 0, now: t, hosts };
   },
   wol: ({ mac }) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac ?? '') ? { ok: true } : { ok: false, error: 'invalid', message: 'Enter a MAC address such as 00:11:22:33:44:55' },
-  packages: () => ({ manager: 'apk', packages: PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested })) }),
+  packages: () => { settle(); return { manager: 'apk', packages: clone(packageList), upgradable: { ...upgradable } }; },
+  task, files, fileRemove, fileMkdir, writeFile, readFile, restore, firmware,
+  reset: () => safe ? { ok: false, error: 'safemode', message: 'Leave Safe Mode before resetting the configuration' } : (lastReboot = now(), { ok: true, rebooting: true }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
   services: () => clone(services), serviceAction,
   setLocaltime: seconds => { localOffset = seconds * 1000 - now(); return true; },
