@@ -102,7 +102,13 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | WiFi ▸ Radios | `wifi-device` sections | X disabled | Band, channel, width, country, Tx power; beacon interval, RTS and fragmentation thresholds, distance, cell density, legacy rates |
 | WiFi ▸ Access List | `macfilter` and `maclist` of each access point | X filter off, C connected | One policy per access point, as OpenWrt has it: allow only listed clients, or deny listed ones |
 | WiFi ▸ Registration | iwinfo association lists | — | Connected clients with signal, rates, uptime and DHCP host names |
-| PPP | `interface` sections with a PPP protocol | R connected, X disabled | PPPoE and other PPP clients: user, password, service, AC, peer DNS, default route, keepalive, MTU, zone |
+| PPP ▸ Interface | `interface` sections with a PPP protocol | R connected, X disabled | PPPoE, L2TP (xl2tpd) and PPTP clients: user, password, server, service, AC, peer DNS, default route, keepalive, MTU, zone |
+| PPP ▸ PPPoE Servers | `pppoe_server` sections of `/etc/config/pppoe` (rp-pppoe-server) | X disabled | Interface, service names, address pool, session limits; sessions use `/etc/ppp/pppoe-server-routerdeck` with the chosen authentication and DNS |
+| PPP ▸ Secrets | `/etc/ppp/chap-secrets` and `pap-secrets`, kept the same and readable by root only | — | Name, password, service and a fixed remote address |
+| Interfaces ▸ Bonding | `interface` sections with proto bonding (proto-bonding) | R, X | Slaves, mode, primary, hash policy, LACP rate, MII or ARP monitoring, address, zone |
+| Interfaces ▸ Tunnels | `interface` sections with gre, gretap (EoIP), grev6, grev6tap, ipip, vxlan and vxlan6 | R, X | Remote and local address, key or VNI, MTU, TTL; the tunnel address lives on a companion static network on `@name`; EoIP can be bridged into a network |
+| Interfaces ▸ OpenVPN | `openvpn` sections of `/etc/config/openvpn` | R running, X disabled | Client, TLS server (client subnet, push, routes) or an .ovpn file; a firewall zone gets a network on the tunnel device |
+| IP ▸ IPsec | `remote`, `tunnel` and `crypto_proposal` sections of `/etc/config/ipsec` (strongSwan swanctl), `swanctl --list-sas` | X, E established; I, A installed | Peers with pre-shared keys or certificates, policies (subnets, start action), proposals, and active SAs with their traffic |
 | Quick Set | `wan` and `lan` networks, their DHCP server and zone, LAN access points, `system` | — | One change for everything edited; see above |
 | Interfaces ▸ Ethernet | Ethernet devices, link state, `device` sections | R link up, S bridge port | Speed, duplex and autonegotiation in the port's `device` section, where the driver allows them |
 | Interfaces ▸ VLAN | `device` sections of type 8021q | R, I | The VLAN form of the device list |
@@ -169,13 +175,13 @@ names come from the form labels (*Src. Address* is `src-address`).
 ```
 
 - Menus: `/interface` (`bridge`, `bridge port`, `bridge vlan`, `ethernet`,
-  `vlan`, `wireguard`, `wireguard peers`, `network`, `pppoe-client`, `wifi`,
+  `vlan`, `bonding`, `tunnel`, `openvpn`, `wireguard`, `wireguard peers`, `network`, `pppoe-client`, `wifi`,
   `wifi radio`, `wifi registration-table`, `wifi access-list`), `/ip` (`address`, `arp`, `route`,
   `firewall filter|nat|mangle|raw|address-list|connection|zone|settings`,
-  `settings`, `pool`, `dhcp-server`,
+  `settings`, `pool`, `ipsec peer|policy|proposal|active-peers`, `dhcp-server`,
   `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
   `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
-  `dhcp-server binding`), `/routing rule`, `/queue sqm`, `/log`, `/system`
+  `dhcp-server binding`), `/ppp` (`secret`, `pppoe-server`), `/routing rule`, `/queue sqm`, `/log`, `/system`
   (`identity`, `clock`, `ntp client`, `logging`, `package` with `install`,
   `uninstall`, `upgrade` and `check-for-updates`, `scheduler`, `script` with
   `run` and `script job`, `startup`, `resource`, `leds`, `history`, and
@@ -212,7 +218,8 @@ Bandwidth Test and Wake on LAN until theirs is installed.
 Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 `redo`, `safemode`). The plugin changes only `network`, `firewall`, `dhcp`,
 `wireless`, `system`, `dropbear`, `uhttpd`, `ttyd`, `upnpd`, `ddns`, `sqm`,
-`routerdeck`, `rpcd`, `fstab`, `/etc/crontabs/root` and `/etc/sysctl.conf`, and:
+`routerdeck`, `rpcd`, `fstab`, `pppoe`, `openvpn`, `ipsec`, `/etc/crontabs/root`,
+`/etc/sysctl.conf` and pppd's secrets and options, and:
 
 1. refuses to run while LuCI is waiting to confirm an *apply with rollback*,
    so the two rollbacks cannot overwrite each other;
@@ -296,7 +303,9 @@ needs SSL, or the browser blocks the embedded terminal.
 - The command line covers the objects the windows show. It has no scripting
   (`:put`, `:foreach`, variables), and `export` is not a full backup: options
   the windows do not model are not exported (use `sysupgrade -b` for that).
-- PPP is the client side only; there is no PPP server or secrets list.
+- The PPPoE server shares one session options file; PPTP and L2TP servers,
+  and OpenVPN and IPsec certificate authorities, are not managed here
+  (certificates are files you upload in Files).
 - fw4 resets rule counters whenever the firewall reloads; rules sharing a name
   show no counters, because nftables reports them under that one name.
 - Safe Mode rolls back after 120 seconds without heartbeats, not after the TCP

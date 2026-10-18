@@ -67,6 +67,9 @@
   and Settings (policies, SYN flood protection, FastPath flow offloading),
   advanced zone, DNS, WiFi (802.11r/k/v, MFP, limits) and radio options, and
   the WiFi access list.
+- Add Interfaces ▸ Bonding, Tunnels (GRE, EoIP, IPIP, VXLAN and their IPv6
+  forms) and OpenVPN, L2TP and PPTP clients, PPP ▸ PPPoE Servers and Secrets,
+  and IP ▸ IPsec (peers, policies, proposals and active SAs over strongSwan).
 
 ### Removed
 

@@ -13,6 +13,7 @@ export const MENU = [
   { id: 'ip-arp', label: 'ARP', window: 'ip-arp' },
   { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
+  { id: 'ip-ipsec', label: 'IPsec', window: 'ip-ipsec', requires: 'ipsec' },
   { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' },
   { id: 'ip-dns', label: 'DNS', window: 'ip-dns' },
   { id: 'ip-pool', label: 'Pool', window: 'ip-pool' },

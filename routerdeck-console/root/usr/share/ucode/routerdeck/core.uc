@@ -17,8 +17,16 @@ export const DELTA = RUN + '/uci';
 export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
-export const FILES = { crontab: '/etc/crontabs/root', sysctl: '/etc/sysctl.conf' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl' ];
+export const FILES = {
+	crontab: '/etc/crontabs/root', sysctl: '/etc/sysctl.conf',
+	'chap-secrets': '/etc/ppp/chap-secrets', 'pap-secrets': '/etc/ppp/pap-secrets', 'pppoe-options': '/etc/ppp/pppoe-server-routerdeck'
+};
+export const CONFIGS = [
+	'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl',
+	'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options'
+];
+// Files only root may read.
+const PRIVATE = [ 'chap-secrets', 'pap-secrets' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -57,14 +65,18 @@ export function config_text(name) {
 };
 
 export function write_config(name, text) {
-	return write_text(FILES[name] ?? '/etc/config/' + name, text);
+	let path = FILES[name] ?? '/etc/config/' + name;
+	let written = write_text(path, text);
+	if (written && name in PRIVATE)
+		system([ '/bin/chmod', '600', path ]);
+	return written;
 };
 
 // Services of optional packages. procd reloads only services it has
 // registered: opkg enables them at installation without starting them, and
 // some are not procd services at all (ddns-scripts on 24.10). Such a service
 // would ignore changes until the next boot, so it is restarted.
-const SERVICES = { upnpd: 'miniupnpd', ddns: 'ddns', sqm: 'sqm', dropbear: 'dropbear', uhttpd: 'uhttpd', ttyd: 'ttyd' };
+const SERVICES = { upnpd: 'miniupnpd', ddns: 'ddns', sqm: 'sqm', dropbear: 'dropbear', uhttpd: 'uhttpd', ttyd: 'ttyd', pppoe: 'pppoe-server', openvpn: 'openvpn', ipsec: 'swanctl' };
 
 function start_unregistered(bus, name) {
 	let service = SERVICES[name];
@@ -102,7 +114,8 @@ export function announce(names) {
 	for (let name in names) {
 		// rpcd reads logins at every login; block-mount and sysctl are
 		// handled by sync_mounts and sync_sysctl. None needs a reload.
-		if (name in [ 'rpcd', 'fstab', 'sysctl' ])
+		// pppd reads its secrets and options at every session.
+		if (name in [ 'rpcd', 'fstab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options' ])
 			continue;
 		// crond has no configuration trigger; it reads its tables at start.
 		if (name == 'crontab')

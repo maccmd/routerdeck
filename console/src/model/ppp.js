@@ -53,6 +53,7 @@ export const pppClients = {
   { id: 'name', label: 'Name', type: row ? 'static' : 'text', required: true, placeholder: 'pppoe_out' },
   { id: 'proto', label: 'Type', type: row ? 'static' : 'select', options: PPP.filter(proto => !data.protos || Object.hasOwn(data.protos, proto)).map(value => ({ value, label: value })) },
   { id: 'device', label: 'Device', type: 'select', allowEmpty: true, options: Object.values(data.devices ?? {}).filter(device => device.devtype === 'ethernet' || device.devtype === 'vlan' || device.bridge).map(device => ({ value: device.name, label: device.name })) },
+  { id: 'server', label: 'Server', type: 'text', placeholder: 'vpn.example.net', visible: values => values.proto === 'l2tp' || values.proto === 'pptp' },
   { id: 'username', label: 'User', type: 'text' },
   { id: 'password', label: 'Password', type: 'password' },
   { id: 'service', label: 'Service Name', type: 'text', visible: values => values.proto === 'pppoe', placeholder: 'any' },
@@ -66,11 +67,11 @@ export const pppClients = {
  values(row, data) {
   const section = sections(data['uci:network'], 'interface').find(item => item['.name'] === row.section) ?? {};
   return {
-   name: row.key, proto: section.proto, device: section.device ?? '', username: section.username ?? '', password: section.password ?? '', service: section.service ?? '', ac: section.ac ?? '',
+   name: row.key, proto: section.proto, device: section.device ?? '', server: section.server ?? '', username: section.username ?? '', password: section.password ?? '', service: section.service ?? '', ac: section.ac ?? '',
    peerdns: truthy(section.peerdns, true), defaultroute: truthy(section.defaultroute, true), keepalive: section.keepalive ?? '', mtu: section.mtu ?? '', zone: zonesOf(data['uci:firewall'], row.key)[0] ?? ''
   };
  },
- defaults: data => ({ name: '', proto: 'pppoe', device: '', username: '', password: '', service: '', ac: '', peerdns: true, defaultroute: true, keepalive: '', mtu: '', zone: zoneOptions(data['uci:firewall']).find(zone => zone.value === 'wan')?.value ?? '' }),
+ defaults: data => ({ name: '', proto: 'pppoe', device: '', server: '', username: '', password: '', service: '', ac: '', peerdns: true, defaultroute: true, keepalive: '', mtu: '', zone: zoneOptions(data['uci:firewall']).find(zone => zone.value === 'wan')?.value ?? '' }),
  save(values, row, data, { dirty = null } = {}) {
   const name = row ? row.section : values.name.trim();
   if (!row) {
@@ -78,10 +79,12 @@ export const pppClients = {
    if (sections(data['uci:network'], 'interface').some(section => section['.name'] === name)) invalid('name', `${name} already exists`);
   }
   if (values.proto === 'pppoe' && !values.device) invalid('device', 'PPPoE needs the Ethernet device it dials on');
+  const tunnel = values.proto === 'l2tp' || values.proto === 'pptp';
+  if (tunnel && !/^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$/.test(values.server ?? '')) invalid('server', `${values.proto.toUpperCase()} needs the server to dial`);
   if (values.keepalive && !/^\d+( \d+)?$/.test(values.keepalive)) invalid('keepalive', 'Use failures and interval, for example 5 1');
   if (values.mtu && !(/^\d+$/.test(values.mtu) && values.mtu >= 576 && values.mtu <= 1500)) invalid('mtu', 'MTU is 576 to 1500');
   const options = compact({
-   proto: values.proto, device: values.device, username: values.username, password: values.password,
+   proto: values.proto, device: tunnel ? '' : values.device, ...(tunnel ? { server: values.server } : {}), username: values.username, password: values.password,
    service: values.proto === 'pppoe' ? values.service : '', ac: values.proto === 'pppoe' ? values.ac : '',
    peerdns: values.peerdns ? '' : '0', defaultroute: values.defaultroute ? '' : '0', keepalive: values.keepalive, mtu: values.mtu
   });

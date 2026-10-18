@@ -19,6 +19,9 @@ const TREE = {
   'pppoe-client': { model: 'ppp' },
   ethernet: { model: 'ethernet' },
   vlan: { model: 'vlans' },
+  bonding: { model: 'bonding' },
+  tunnel: { model: 'tunnels' },
+  openvpn: { model: 'openvpn' },
   wireguard: { model: 'wireguard', children: { peers: { model: 'wireguard-peers' } } },
   wifi: { model: 'wifi-interfaces', children: { radio: { model: 'wifi-radios' }, 'registration-table': { model: 'wifi-registration' }, 'access-list': { model: 'wifi-access-list' } } }
  } },
@@ -32,6 +35,7 @@ const TREE = {
   firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, mangle: { model: 'fw-mangle' }, raw: { model: 'fw-raw' }, 'address-list': { model: 'fw-address-lists' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' }, settings: { model: 'fw-settings' } } },
   settings: { model: 'ip-settings' },
   pool: { model: 'ip-pools' },
+  ipsec: { children: { peer: { model: 'ipsec-peers' }, policy: { model: 'ipsec-policies' }, proposal: { model: 'ipsec-proposals' }, 'active-peers': { model: 'ipsec-active' } } },
   'dhcp-server': { model: 'dhcp-servers', children: { network: { model: 'dhcp-networks' }, lease: { model: 'dhcp-leases' }, option: { model: 'dhcp-options' } } },
   dns: { model: 'dns-settings', children: { static: { model: 'dns-static' } } }
  } },
@@ -41,6 +45,7 @@ const TREE = {
   route: { model: 'routes6' },
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
+ ppp: { children: { secret: { model: 'ppp-secrets' }, 'pppoe-server': { model: 'ppp-servers' } } },
  routing: { children: { rule: { model: 'routing-rules' } } },
  queue: { children: { sqm: { model: 'sqm-queues' } } },
  log: { model: 'log' },

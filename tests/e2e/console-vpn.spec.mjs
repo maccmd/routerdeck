@@ -1,0 +1,191 @@
+// Tunnels, bonding, L2TP, the PPPoE server and secrets, OpenVPN and IPsec
+// against the simulated router.
+import { test, expect } from '@playwright/test';
+
+test.beforeEach(async ({ page }, info) => {
+ test.skip(info.project.use.viewport.width < 1280, 'The console targets desktop work areas');
+ const errors = [];
+ page.on('pageerror', error => errors.push(error.message));
+ page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+ page.consoleErrors = errors;
+ await page.goto('/routerdeck/');
+ await page.evaluate(() => localStorage.clear());
+ await page.getByLabel('Password', { exact: true }).fill('routerdeck');
+ await page.getByRole('button', { name: 'Connect' }).click();
+ await expect(page.getByRole('navigation', { name: 'Main menu' })).toBeVisible();
+});
+test.afterEach(async ({ page }) => expect(page.consoleErrors ?? []).toEqual([]));
+
+const win = (page, title) => page.getByRole('dialog', { name: title, exact: true });
+const row = (scope, text) => scope.locator('.rd-grid-row').filter({ has: scope.page().getByRole('gridcell', { name: text, exact: true }) });
+const add = scope => scope.getByRole('button', { name: 'Add', exact: true }).click();
+const tab = (scope, name) => scope.getByRole('tab', { name, exact: true }).click();
+
+test('tunnels and bonds are interfaces with their own tabs', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'Interfaces', exact: true }).click();
+ const list = win(page, 'Interface List');
+ await tab(list, 'Tunnels');
+ await expect(row(list, 'gre_branch')).toContainText('203.0.113.20');
+ await expect(row(list, 'gre_branch')).toContainText('10.255.0.1/30');
+ await expect(row(list, 'gre_branch')).toContainText('gre4-gre_branch');
+ await add(list);
+ const eoip = win(page, 'New Tunnel');
+ await eoip.getByLabel('Name:').fill('very_long_name');
+ await eoip.getByLabel('Type:').selectOption('gretap');
+ await eoip.getByLabel('Remote Address:').fill('198.51.100.40');
+ await eoip.getByLabel('Bridge Into:').selectOption('lan');
+ await eoip.getByRole('button', { name: 'Apply' }).click();
+ await expect(eoip.getByText(/up to 9 characters for EoIP/)).toBeVisible();
+ await eoip.getByLabel('Name:').fill('eoip1');
+ await eoip.getByRole('button', { name: 'OK' }).click();
+ await expect(row(list, 'eoip1')).toContainText('EoIP (GRE TAP)');
+ await add(list);
+ const vxlan = win(page, 'New Tunnel');
+ await vxlan.getByLabel('Name:').fill('vx100');
+ await vxlan.getByLabel('Type:').selectOption('vxlan');
+ await vxlan.getByLabel('Remote Address:').fill('198.51.100.50');
+ await vxlan.getByRole('button', { name: 'Apply' }).click();
+ await expect(vxlan.getByText('A VNI is a number up to 16777215')).toBeVisible();
+ await vxlan.getByLabel('VNI:').fill('100');
+ await vxlan.getByLabel('Tunnel Address:').fill('10.100.0.1/24');
+ await vxlan.getByRole('button', { name: 'OK' }).click();
+ await expect(row(list, 'vx100')).toContainText('10.100.0.1/24');
+
+ await tab(list, 'Bonding');
+ await add(list);
+ const bond = win(page, 'New Bond');
+ await bond.getByLabel('Name:').fill('bond0');
+ await bond.getByRole('group', { name: 'Slaves:' }).getByLabel('eth2').check();
+ await bond.getByRole('group', { name: 'Slaves:' }).getByLabel('eth3').check();
+ await bond.getByLabel('Mode:').selectOption('802.3ad');
+ await bond.getByLabel('Link Monitoring:').selectOption('arp');
+ await bond.getByRole('button', { name: 'Apply' }).click();
+ await expect(bond.getByText('ARP monitoring needs at least one address to check')).toBeVisible();
+ await bond.getByLabel('Link Monitoring:').selectOption('mii');
+ await bond.getByLabel('Address:').fill('192.168.40.1/24');
+ await bond.getByRole('button', { name: 'OK' }).click();
+ await expect(row(list, 'bond0')).toContainText('802.3ad');
+ await expect(row(list, 'bond0')).toContainText('192.168.40.1/24');
+ for (let step = 0; step < 3; step++) await page.getByRole('button', { name: 'Undo' }).click();
+ await expect(row(list, 'bond0')).toHaveCount(0);
+});
+
+test('PPP: an L2TP client, the PPPoE server and its secrets', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'PPP', exact: true }).click();
+ const ppp = win(page, 'PPP');
+ await add(ppp);
+ const client = win(page, 'New PPP Client');
+ await client.getByLabel('Name:', { exact: true }).fill('l2tp_out');
+ await client.getByLabel('Type:').selectOption('l2tp');
+ await client.getByRole('button', { name: 'Apply' }).click();
+ await expect(client.getByText('L2TP needs the server to dial')).toBeVisible();
+ await client.getByLabel('Server:').fill('vpn.example.net');
+ await client.getByRole('button', { name: 'OK' }).click();
+ await expect(row(ppp, 'l2tp_out')).toContainText('l2tp');
+
+ await tab(ppp, 'PPPoE Servers');
+ await expect(row(ppp, 'lan').locator('.is-flags')).toHaveText('X');
+ await row(ppp, 'lan').click();
+ await page.keyboard.press('Control+e');
+ await expect(row(ppp, 'lan').locator('.is-flags')).toHaveText('');
+ await row(ppp, 'lan').dblclick();
+ const server = page.getByRole('dialog', { name: /^PPPoE Server </ });
+ await tab(server, 'Sessions');
+ await server.getByLabel('Authentication:').selectOption('pap');
+ await server.getByRole('textbox', { name: 'DNS Servers:' }).fill('192.168.88.1');
+ await server.getByRole('button', { name: 'OK' }).click();
+ await expect(page.getByRole('button', { name: 'Undo' })).toHaveAttribute('title', /^Undo: Change PPPoE server/);
+
+ await tab(ppp, 'Secrets');
+ await expect(row(ppp, 'alice')).toContainText('any');
+ await add(ppp);
+ const secret = win(page, 'New PPP Secret');
+ await secret.getByLabel('Name:').fill('alice');
+ await secret.getByLabel('Password:').fill('hunter22');
+ await secret.getByRole('button', { name: 'Apply' }).click();
+ await expect(secret.getByText('alice already has a secret')).toBeVisible();
+ await secret.getByLabel('Name:').fill('bob');
+ await secret.getByLabel('Remote Address:').fill('10.67.0.50');
+ await secret.getByRole('button', { name: 'OK' }).click();
+ await expect(row(ppp, 'bob')).toContainText('10.67.0.50');
+});
+
+test('OpenVPN instances and IPsec peers, policies and proposals', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'Interfaces', exact: true }).click();
+ const list = win(page, 'Interface List');
+ await tab(list, 'OpenVPN');
+ await expect(row(list, 'office').locator('.is-flags')).toHaveText('R');
+ await expect(row(list, 'office')).toContainText('vpn.example.net 1194');
+ await expect(row(list, 'custom_config').locator('.is-flags')).toHaveText('X');
+ await add(list);
+ const vpn = win(page, 'New OpenVPN Instance');
+ await vpn.getByLabel('Name:').fill('srv');
+ await vpn.getByLabel('Role:').selectOption('server');
+ await vpn.getByLabel('Firewall Zone:').selectOption('lan');
+ await vpn.getByRole('button', { name: 'Apply' }).click();
+ await expect(vpn.getByText('OpenVPN with TLS needs the CA certificate')).toBeVisible();
+ await tab(vpn, 'Keys');
+ await vpn.getByLabel('CA Certificate:').fill('/etc/openvpn/ca.crt');
+ await vpn.getByLabel('Certificate:', { exact: true }).fill('/etc/openvpn/server.crt');
+ await vpn.getByLabel('Key:', { exact: true }).fill('/etc/openvpn/server.key');
+ await vpn.getByRole('button', { name: 'OK' }).click();
+ await expect(row(list, 'srv')).toContainText('10.8.0.0/24');
+ await expect(row(list, 'srv')).toContainText('tun_srv');
+
+ await page.getByRole('menuitem', { name: 'IP', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'IPsec', exact: true }).click();
+ const ipsec = win(page, 'IPsec');
+ await expect(row(ipsec, 'branch').locator('.is-flags')).toHaveText('E');
+ await tab(ipsec, 'Policies');
+ await expect(row(ipsec, 'branch_lan').locator('.is-flags')).toHaveText('A');
+ await expect(row(ipsec, 'branch_lan')).toContainText('192.168.50.0/24');
+ await tab(ipsec, 'Proposals');
+ await expect(row(ipsec, 'aes256_sha256')).toContainText('branch, branch_lan');
+ await row(ipsec, 'aes256_sha256').click();
+ await page.keyboard.press('Delete');
+ await expect(ipsec.getByRole('alert')).toContainText('aes256_sha256 is used by branch, branch_lan');
+ await tab(ipsec, 'Peers');
+ await add(ipsec);
+ const peer = win(page, 'New IPsec Peer');
+ await peer.getByLabel('Name:').fill('home');
+ await peer.getByLabel('Address:', { exact: true }).fill('198.51.100.77');
+ await peer.getByLabel('Secret:').fill('short');
+ await peer.getByRole('button', { name: 'Apply' }).click();
+ await expect(peer.getByText('A secret of at least 8 characters')).toBeVisible();
+ await peer.getByLabel('Secret:').fill('long-enough-secret');
+ await peer.getByRole('button', { name: 'OK' }).click();
+ await expect(row(ipsec, 'home')).toContainText('198.51.100.77');
+ await tab(ipsec, 'Policies');
+ await add(ipsec);
+ const policy = win(page, 'New IPsec Policy');
+ await policy.getByLabel('Name:').fill('home_lan');
+ await policy.getByLabel('Peer:').selectOption('home');
+ await policy.getByRole('textbox', { name: 'Src. Address:' }).fill('192.168.88.0/24');
+ await policy.getByRole('textbox', { name: 'Dst. Address:' }).fill('192.168.60.0/24');
+ await policy.getByRole('button', { name: 'OK' }).click();
+ await expect(row(ipsec, 'home_lan')).toContainText('home');
+ await tab(ipsec, 'Peers');
+ await expect(row(ipsec, 'home')).toContainText('home_lan');
+ await tab(ipsec, 'Active Peers');
+ await expect(row(ipsec, 'branch')).toContainText('established');
+});
+
+test('the command line reaches tunnels, PPP secrets and IPsec', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'New Terminal' }).click();
+ const term = win(page, 'Terminal');
+ const input = term.getByRole('textbox', { name: /^Command/ });
+ const output = term.getByRole('log', { name: 'Terminal output' });
+ const run = async line => {
+  await input.fill(line);
+  await input.press('Enter');
+  await expect(term.locator('.rd-cli-input')).not.toHaveClass(/is-busy/);
+ };
+ await run('/interface tunnel print');
+ await expect(output).toContainText('gre_branch');
+ await run('/ppp secret add name=carol password=carol-pass');
+ await run('/ppp secret print');
+ await expect(output).toContainText('carol');
+ await run('/ip ipsec peer print');
+ await expect(output).toContainText('198.51.100.30');
+ await expect(output.locator('.is-error')).toHaveCount(0);
+});

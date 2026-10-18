@@ -10,9 +10,9 @@ const capturedCerts = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl', 'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options'];
 // Configurations kept as whole texts rather than UCI sections.
-const FILES = ['crontab', 'sysctl'];
+const FILES = ['crontab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options'];
 // Kernel defaults of the settings IP > Settings shows, as on OpenWrt 25.12.5.
 const SYSCTL_DEFAULTS = {
  'net.ipv4.ip_forward': '1', 'net.ipv6.conf.all.forwarding': '1', 'net.ipv4.conf.all.rp_filter': '0', 'net.ipv4.conf.default.rp_filter': '0', 'net.ipv4.conf.all.accept_redirects': '1',
@@ -76,8 +76,21 @@ function initialConfigs() {
  const sqm = { eth0: section('queue', 'eth0', 0, { enabled: '1', interface: 'eth0', download: '85000', upload: '10000', qdisc: 'cake', script: 'piece_of_cake.qos', linklayer: 'none' }) };
  const routerdeck = { cfg2692bd: section('netwatch', 'cfg2692bd', 0, { host: '203.0.113.1', interval: '10', timeout: '1', down: 'logger -t netwatch-demo gateway lost', comment: 'Upstream gateway' }, true), cfg2792bd: section('netwatch', 'cfg2792bd', 1, { host: '192.168.88.250', interval: '30', timeout: '1' }, true) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
+ network.gre_branch = section('interface', 'gre_branch', 30, { proto: 'gre', peeraddr: '203.0.113.20', ikey: '42', okey: '42', mtu: '1476' });
+ network.gre_branch_addr = section('interface', 'gre_branch_addr', 31, { proto: 'static', device: '@gre_branch', ipaddr: ['10.255.0.1/30'] });
+ const pppoe = { cfg2c92bd: section('pppoe_server', 'cfg2c92bd', 0, { interface: 'lan', service_name: ['internet'], localip: '10.67.0.1', firstremoteip: '10.67.0.2', maxsessions: '64', optionsfile: '/etc/ppp/pppoe-server-routerdeck', enabled: '0' }, true) };
+ const openvpn = {
+  office: section('openvpn', 'office', 0, { enabled: '1', client: '1', remote: ['vpn.example.net 1194'], proto: 'udp', dev: 'tun_office', ca: '/etc/openvpn/office-ca.crt', cert: '/etc/openvpn/office.crt', key: '/etc/openvpn/office.key', nobind: '1', persist_key: '1', persist_tun: '1' }),
+  custom_config: section('openvpn', 'custom_config', 1, { enabled: '0', config: '/etc/openvpn/my-vpn.conf' })
+ };
+ const ipsec = {
+  aes256_sha256: section('crypto_proposal', 'aes256_sha256', 0, { encryption_algorithm: 'aes256', hash_algorithm: 'sha256', dh_group: 'modp2048' }),
+  branch: section('remote', 'branch', 1, { enabled: '1', gateway: '198.51.100.30', authentication_method: 'psk', pre_shared_key: 'not-a-real-secret', crypto_proposal: ['aes256_sha256'], tunnel: ['branch_lan'] }),
+  branch_lan: section('tunnel', 'branch_lan', 2, { local_subnet: ['192.168.88.0/24'], remote_subnet: ['192.168.50.0/24'], crypto_proposal: ['aes256_sha256'], startaction: 'start' })
+ };
+ const chapSecrets = '#USERNAME  PROVIDER  PASSWORD  IPADDRESS\nalice * wonderland *\n';
  const sysctl = '# User defined entries should be added to this file not to /etc/sysctl.d/* as\n# that directory is not backed-up by default and will not survive a reimage\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab, sysctl };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab, sysctl, pppoe, openvpn, ipsec, 'chap-secrets': chapSecrets, 'pap-secrets': chapSecrets, 'pppoe-options': '' };
 }
 
 const CLIENTS = [
@@ -305,7 +318,9 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   const uptime = 1063212 + Math.floor(seconds());
   return sectionsOf('network', 'interface').filter(item => item.disabled !== '1').map(item => {
    const name = item['.name'];
-   const device = item.device ?? name;
+   // netifd names tunnel and bond devices after the protocol.
+   const named = { gre: 'gre4-', gretap: 'gre4t-', ipip: 'ipip-', bonding: 'bond-' }[item.proto];
+   const device = named ? named + name : item.device?.startsWith('@') ? (({ gre: 'gre4-', gretap: 'gre4t-', ipip: 'ipip-' })[configs.network[item.device.slice(1)]?.proto] ?? '') + item.device.slice(1) : item.device ?? name;
    const live = { interface: name, up: true, pending: false, available: true, autostart: item.auto !== '0', dynamic: false, uptime, l3_device: device, proto: item.proto ?? 'none', device, 'ipv4-address': [], 'ipv6-address': [], route: [], 'dns-server': [] };
    if (item.proto === 'static') live['ipv4-address'] = [].concat(item.ipaddr ?? []).map(entry => ({ address: entry.split('/')[0], mask: Number(entry.split('/')[1] ?? 32) }));
    if (item.proto === 'static') live['ipv6-address'] = [].concat(item.ip6addr ?? []).map(entry => ({ address: entry.split('/')[0], mask: Number(entry.split('/')[1] ?? 128) }));
@@ -841,6 +856,12 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   wol: ({ mac }) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac ?? '') ? { ok: true } : { ok: false, error: 'invalid', message: 'Enter a MAC address such as 00:11:22:33:44:55' },
   packages: () => { settle(); return { manager: 'apk', packages: clone(packageList), upgradable: { ...upgradable } }; },
   task, files, fileRemove, fileMkdir, writeFile, readFile, restore, firmware, users, certificate, leds, disks, unmount,
+  pppfiles: () => ({ chap: configs['chap-secrets'], pap: configs['pap-secrets'], options: configs['pppoe-options'], server: true }),
+  openvpn: () => ({ installed: true, instances: Object.fromEntries(sectionsOf('openvpn', 'openvpn').filter(item => item.enabled === '1').map(item => [item['.name'], { running: true }])) }),
+  ipsec: () => ({ installed: true, legacy: false, sas: sectionsOf('ipsec', 'remote').filter(item => item.enabled === '1').map((item, index) => ({
+   name: item['.name'], id: index + 1, state: 'ESTABLISHED', version: 'IKEv2', local: '203.0.113.42', remote: item.gateway, established: Math.floor(seconds()) + 300,
+   children: [].concat(item.tunnel ?? []).map((tunnel, child) => ({ name: tunnel, id: child + 1, state: 'INSTALLED', mode: 'TUNNEL', in: 120000 + Math.floor(seconds()) * 800, out: 98000 + Math.floor(seconds()) * 600, local: [].concat(configs.ipsec[tunnel]?.local_subnet ?? []).join(' '), remote: [].concat(configs.ipsec[tunnel]?.remote_subnet ?? []).join(' ') }))
+  })) }),
   certificates: () => ({ certificates: [{ path: '/etc/uhttpd.crt', role: 'web', data: webCert.data, key: true, keypath: '/etc/uhttpd.key', previous: webCert.previous }], px5g: true }),
   trusted: () => ({ path: '/etc/ssl/certs/ca-certificates.crt', data: capturedCerts.trusted }),
   mount: () => { syncMounts(); return { ok: true }; },

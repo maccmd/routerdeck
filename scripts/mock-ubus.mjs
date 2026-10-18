@@ -57,7 +57,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   routerdeck: {
    info: (args, sid) => [0, {
     version, api: 1, mock: true, user: sessions.get(sid)?.username,
-    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true, luci_object: true, rc: true, cron: true, backup: true, upload: true, packages: 'apk', sysupgrade: true, block: true, wireguard: true, upnp: true, ddns: true, sqm: true, iperf3: true, etherwake: true }
+    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true, luci_object: true, rc: true, cron: true, backup: true, upload: true, packages: 'apk', sysupgrade: true, block: true, openvpn: true, ipsec: true, pppoe_server: true, wireguard: true, upnp: true, ddns: true, sqm: true, iperf3: true, etherwake: true }
    }],
    routes: (args, sid) => [0, { routes: args.family === 6 ? routerOf(sid).routes6() : routerOf(sid).routes4() }],
    fw_counters: (args, sid) => [0, routerOf(sid).counters()],
@@ -82,6 +82,9 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
    reset: (args, sid) => [0, routerOf(sid).reset()],
    users: (args, sid) => [0, routerOf(sid).users(user(sid))],
    sysctl: (args, sid) => [0, routerOf(sid).sysctl(args)],
+   pppfiles: (args, sid) => [0, routerOf(sid).pppfiles()],
+   openvpn: (args, sid) => [0, routerOf(sid).openvpn()],
+   ipsec: (args, sid) => [0, routerOf(sid).ipsec()],
    certificates: (args, sid) => [0, routerOf(sid).certificates()],
    trusted: (args, sid) => [0, routerOf(sid).trusted()],
    certificate: (args, sid) => [0, routerOf(sid).certificate(args)],
@@ -122,7 +125,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
    init: (args, sid) => routerOf(sid).serviceAction(args.name, args.action) ? [0] : [4]
   },
   network: {
-   get_proto_handlers: () => [0, { dhcp: {}, dhcpv6: {}, ppp: {}, pppoe: {}, static: {}, wireguard: {} }]
+   get_proto_handlers: () => [0, { bonding: {}, dhcp: {}, dhcpv6: {}, gre: {}, gretap: {}, ipip: {}, l2tp: {}, ppp: {}, pppoe: {}, pptp: {}, static: {}, vxlan: {}, wireguard: {} }]
   },
   iwinfo: {
    devices: (args, sid) => [0, { devices: Object.keys(routerOf(sid).wifi()) }],

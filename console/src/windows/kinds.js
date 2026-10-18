@@ -5,8 +5,8 @@
 export const WINDOW_KINDS = {
  'quick-set': { title: 'Quick Set', size: { w: 600, h: 400 }, tabs: [{ label: 'Quick Set', model: 'quick-set' }] },
  interfaces: { title: 'Interface List', size: { w: 900, h: 400 }, tabs: [
-  { label: 'Interface', model: 'interfaces' }, { label: 'Ethernet', model: 'ethernet' }, { label: 'VLAN', model: 'vlans' },
-  { label: 'WireGuard', model: 'wireguard' }, { label: 'WireGuard Peers', model: 'wireguard-peers' }, { label: 'Networks', model: 'networks' }
+  { label: 'Interface', model: 'interfaces' }, { label: 'Ethernet', model: 'ethernet' }, { label: 'VLAN', model: 'vlans' }, { label: 'Bonding', model: 'bonding' }, { label: 'Tunnels', model: 'tunnels' },
+  { label: 'WireGuard', model: 'wireguard' }, { label: 'WireGuard Peers', model: 'wireguard-peers' }, { label: 'OpenVPN', model: 'openvpn' }, { label: 'Networks', model: 'networks' }
  ] },
  'ip-addresses': { title: 'Address List', size: { w: 500, h: 300 }, tabs: [{ label: 'Addresses', model: 'addresses' }] },
  'ip-routes': { title: 'Route List', size: { w: 760, h: 340 }, tabs: [{ label: 'Routes', model: 'routes' }] },
@@ -14,7 +14,8 @@ export const WINDOW_KINDS = {
   { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Mangle', model: 'fw-mangle' }, { label: 'Raw', model: 'fw-raw' }, { label: 'Address Lists', model: 'fw-address-lists' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }, { label: 'Settings', model: 'fw-settings' }
  ] },
  wifi: { title: 'WiFi', size: { w: 900, h: 320 }, tabs: [{ label: 'WiFi Interfaces', model: 'wifi-interfaces' }, { label: 'Radios', model: 'wifi-radios' }, { label: 'Registration', model: 'wifi-registration' }, { label: 'Access List', model: 'wifi-access-list' }] },
- ppp: { title: 'PPP', size: { w: 860, h: 280 }, tabs: [{ label: 'Interface', model: 'ppp' }] },
+ ppp: { title: 'PPP', size: { w: 860, h: 300 }, tabs: [{ label: 'Interface', model: 'ppp' }, { label: 'PPPoE Servers', model: 'ppp-servers' }, { label: 'Secrets', model: 'ppp-secrets' }] },
+ 'ip-ipsec': { title: 'IPsec', size: { w: 900, h: 320 }, tabs: [{ label: 'Peers', model: 'ipsec-peers' }, { label: 'Policies', model: 'ipsec-policies' }, { label: 'Proposals', model: 'ipsec-proposals' }, { label: 'Active Peers', model: 'ipsec-active' }] },
  bridge: { title: 'Bridge', size: { w: 820, h: 340 }, tabs: [{ label: 'Bridge', model: 'bridges' }, { label: 'Ports', model: 'bridge-ports' }, { label: 'VLANs', model: 'bridge-vlans' }] },
  'ipv6-addresses': { title: 'IPv6 Address List', size: { w: 720, h: 320 }, tabs: [{ label: 'Addresses', model: 'addresses6' }] },
  'ipv6-routes': { title: 'IPv6 Route List', size: { w: 900, h: 360 }, tabs: [{ label: 'Routes', model: 'routes6' }] },

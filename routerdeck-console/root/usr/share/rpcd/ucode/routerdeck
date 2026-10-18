@@ -849,6 +849,76 @@ function reset() {
 	return { ok: true, rebooting: true };
 }
 
+/* --- PPP server, OpenVPN and IPsec ------------------------------------------ */
+
+// The secrets hold passwords, so they come from a write-only method.
+function pppfiles() {
+	return {
+		chap: config_text('chap-secrets'), pap: config_text('pap-secrets'), options: config_text('pppoe-options'),
+		server: executable('/usr/sbin/pppoe-server')
+	};
+}
+
+function service_instances(name) {
+	let bus = connect();
+	let reply = bus?.call('service', 'list', { name }) ?? {};
+	bus?.disconnect();
+	let found = {};
+	for (let instance, state in reply?.[name]?.instances ?? {})
+		found[instance] = { running: !!state.running, pid: state.pid };
+	return found;
+}
+
+function openvpn_status() {
+	return { installed: executable('/usr/sbin/openvpn'), instances: service_instances('openvpn') };
+}
+
+// swanctl --list-sas: IKE SAs with their child SAs.
+function ipsec_status() {
+	if (!executable('/usr/sbin/swanctl'))
+		return { installed: false, sas: [] };
+	// The older starter service also answers changes to /etc/config/ipsec;
+	// both at once keep restarting charon and swanctl cannot reach it.
+	let legacy = executable('/etc/init.d/ipsec') && system('/etc/init.d/ipsec enabled') == 0;
+	let sas = [], sa = null, child = null;
+	for (let line in split(run('/usr/sbin/swanctl --list-sas 2>/dev/null').output, '\n')) {
+		let head = match(line, /^([^ :]+): #([0-9]+), ([A-Z_]+), (IKEv[12])/);
+		if (head) {
+			sa = { name: head[1], id: int(head[2]), state: head[3], version: head[4], children: [] };
+			child = null;
+			push(sas, sa);
+			continue;
+		}
+		if (!sa)
+			continue;
+		let sub = match(line, /^  ([^ :]+): #([0-9]+), reqid [0-9]+, ([A-Z_]+), ([A-Z]+)/);
+		if (sub) {
+			child = { name: sub[1], id: int(sub[2]), state: sub[3], mode: sub[4], in: 0, out: 0 };
+			push(sa.children, child);
+			continue;
+		}
+		let endpoint = match(line, /^  (local|remote) +'([^']*)' @ ([^ ]+)/);
+		if (endpoint && !child) {
+			sa[endpoint[1]] = endpoint[2] == endpoint[3] ? endpoint[3] : endpoint[2] + ' @ ' + endpoint[3];
+			continue;
+		}
+		let since = match(line, /^  established ([0-9]+)s ago/);
+		if (since) {
+			sa.established = int(since[1]);
+			continue;
+		}
+		let counter = child && match(line, /^    (in|out) +[0-9a-f]+[^,]*, +([0-9]+) bytes/);
+		if (counter) {
+			child[counter[1]] = int(counter[2]);
+			continue;
+		}
+		let net = child && match(line, /^    (local|remote) +(.+)$/);
+		if (net)
+			child[net[1]] = trim(net[2]);
+	}
+	return { installed: true, legacy, sas };
+}
+
 /* --- Kernel settings ------------------------------------------------------ */
 
 // Current values of the settings IP > Settings shows, and the file that
@@ -1535,6 +1605,9 @@ return {
 						packages: package_manager(),
 						sysupgrade: executable('/sbin/sysupgrade'),
 						block: executable('/sbin/block'),
+						openvpn: executable('/usr/sbin/openvpn'),
+						ipsec: executable('/usr/sbin/swanctl'),
+						pppoe_server: executable('/usr/sbin/pppoe-server'),
 						wireguard: executable('/usr/bin/wg'),
 						upnp: executable('/usr/sbin/miniupnpd'),
 						ddns: executable('/usr/lib/ddns/dynamic_dns_updater.sh'),
@@ -1600,6 +1673,15 @@ return {
 		sysctl: {
 			args: { keys: [] },
 			call: request => sysctl(request.args)
+		},
+		pppfiles: {
+			call: () => pppfiles()
+		},
+		openvpn: {
+			call: () => openvpn_status()
+		},
+		ipsec: {
+			call: () => ipsec_status()
 		},
 		certificates: {
 			call: () => certificates()

@@ -83,7 +83,7 @@ test('lists show live router data with RouterOS-style flags and comments', async
 test('add an address through its object window, then undo and redo', async ({ page }) => {
  await openIp(page, 'Addresses');
  const list = win(page, 'Address List');
- await expect(rows(list)).toHaveCount(3);
+ await expect(rows(list)).toHaveCount(4);
  await list.getByRole('button', { name: 'Add', exact: true }).click();
  const item = win(page, 'New Address');
  await item.getByLabel('Address:').fill('192.168.88.7');

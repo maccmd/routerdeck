@@ -86,6 +86,12 @@ export const SOURCES = {
  leds: [() => client.call('routerdeck', 'leds').catch(() => ({ leds: [] })), 3000],
  disks: [() => client.call('routerdeck', 'disks'), 5000],
  'uci:fstab': [() => uci('fstab')().catch(() => ({})), 5000],
+ 'uci:pppoe': [() => uci('pppoe')().catch(() => ({})), 5000],
+ 'uci:openvpn': [() => uci('openvpn')().catch(() => ({})), 5000],
+ 'uci:ipsec': [() => uci('ipsec')().catch(() => ({})), 5000],
+ pppfiles: [() => client.call('routerdeck', 'pppfiles'), 10000],
+ openvpn: [() => client.call('routerdeck', 'openvpn').catch(() => ({ installed: false, instances: {} })), 3000],
+ ipsec: [() => client.call('routerdeck', 'ipsec').catch(() => ({ installed: false, sas: [] })), 3000],
  crontab: [() => client.call('routerdeck', 'crontab'), 5000],
  'uci:wireless': [() => client.call('uci', 'get', { config: 'wireless' }).then(reply => reply?.values ?? {}, () => ({})), 5000],
  // netifd's network.wireless rejects uhttpd's session argument; luci-rpc wraps it.
