@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node scripts/build-console.mjs && node scripts/preview.mjs",
     "dev:console": "node scripts/build-console.mjs && node scripts/preview.mjs --watch-console",
-    "build": "node scripts/build-console.mjs && node scripts/build.mjs",
+    "build": "node scripts/build-console.mjs",
     "build:console": "node scripts/build-console.mjs",
     "check": "node scripts/check.mjs",
     "test": "node --test tests/unit/*.test.mjs",

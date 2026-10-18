@@ -1,5 +1,0 @@
-#!/bin/sh
-# Register without changing the administrator's selected theme.
-uci set luci.themes.RouterDeck=/luci-static/routerdeck
-uci commit luci
-exit 0

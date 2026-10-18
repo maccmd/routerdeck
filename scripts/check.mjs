@@ -8,14 +8,10 @@ async function check(path) {
   const file = join(path, entry.name);
   if (entry.isDirectory()) { await check(file); continue; }
   const text = await readFile(file, 'utf8');
-  if (file.endsWith('.js')) { new Function(text); count++; }
-  if (file.endsWith('/navigation.ut')) { new Function(text.match(/<script>([\s\S]*)<\/script>/)[1]); count++; }
   if (file.endsWith('.json')) { JSON.parse(text); count++; }
  }
 }
-await check(join(root, 'luci-theme-routerdeck'));
-await check(join(root, 'luci-app-routerdeck'));
-await check(join(root, 'luci-app-routerdeck-workspace'));
 await check(join(root, 'routerdeck-console/root'));
-await check(join(root, 'preview'));
-console.log(`Validated ${count} JavaScript and JSON sources, including inline navigation.`);
+await check(join(root, 'console/mock'));
+await check(join(root, 'tests/fixtures'));
+console.log(`Validated ${count} JSON sources.`);

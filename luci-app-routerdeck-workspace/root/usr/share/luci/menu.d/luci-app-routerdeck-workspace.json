@@ -1,6 +1,0 @@
-{
- "admin/status/workspace": {
-  "action": { "type": "view", "path": "routerdeck/workspace" },
-  "depends": { "acl": ["luci-mod-status-index"] }
- }
-}

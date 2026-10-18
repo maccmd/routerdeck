@@ -36,7 +36,7 @@ export async function writeStatic() {
  const version = createHash('sha256').update(app).update(css).digest('hex').slice(0, 12);
  const html = (await readFile(root + 'console/index.html', 'utf8')).replaceAll('__ASSET_VERSION__', version);
  await writeFile(outdir + '/index.html', html);
- await copyFile(root + 'luci-theme-routerdeck/htdocs/luci-static/routerdeck/mark.svg', outdir + '/mark.svg');
+ await copyFile(root + 'console/mark.svg', outdir + '/mark.svg');
  const notices = await Promise.all(licenses.map(async ([name, file]) => `${name}\n${'-'.repeat(name.length)}\n${(await readFile(root + file, 'utf8')).trim()}\n`));
  await writeFile(outdir + '/licenses.txt', `RouterDeck Console bundles the following MIT-licensed packages.\n\n${notices.join('\n')}`);
  return version;

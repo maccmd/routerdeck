@@ -8,18 +8,15 @@ if [ ! -f .routerdeck-sdk-version ]; then
  printf '%s\n' "$version" > .routerdeck-sdk-version
 fi
 test "$(cat .routerdeck-sdk-version)" = "$version"
-packages="luci-theme-routerdeck luci-app-routerdeck luci-app-routerdeck-workspace routerdeck-console"
+packages="routerdeck-console"
 for package in $packages; do
  rm -rf "package/$package"
  cp -a "/work/$package" package/
 done
-# Only our architecture-independent packages are built. Their LuCI dependencies
-# are resolved by the target's own package manager, preserving firmware versions.
+# Only our architecture-independent package is built. Its dependencies are
+# resolved by the target's own package manager, preserving firmware versions.
 if ! grep -q '^CONFIG_PACKAGE_routerdeck-console=m' .config 2>/dev/null; then
 cat > .config <<'CONFIG'
-CONFIG_PACKAGE_luci-theme-routerdeck=m
-CONFIG_PACKAGE_luci-app-routerdeck=m
-CONFIG_PACKAGE_luci-app-routerdeck-workspace=m
 CONFIG_PACKAGE_routerdeck-console=m
 CONFIG_SIGNED_PACKAGES=n
 CONFIG_ALL_NONSHARED=n
@@ -32,7 +29,11 @@ make defconfig
 fi
 make $(for package in $packages; do printf "package/%s/clean " "$package"; done)
 make $(for package in $packages; do printf "package/%s/compile " "$package"; done) V=s -j2
+# Earlier builds may have left other packages in dist/ and in the SDK volume.
+rm -rf "/work/dist/packages/$series"
 mkdir -p "/work/dist/packages/$series"
-find bin/packages -name "*routerdeck*.$extension" -exec cp '{}' "/work/dist/packages/$series/" \;
+for package in $packages; do
+ find bin/packages -name "$package[-_]*.$extension" -exec cp '{}' "/work/dist/packages/$series/" \;
+done
 cd "/work/dist/packages/$series"
 sha256sum *."$extension" > SHA256SUMS

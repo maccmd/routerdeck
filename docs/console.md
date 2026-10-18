@@ -178,29 +178,11 @@ names come from the form labels (*Src. Address* is `src-address`).
 
 ## Installation
 
-Build the packages (see [Development](development.md#checks-and-builds)) and
-install `routerdeck-console` on the router:
-
-```sh
-# OpenWrt 25.12
-apk add --allow-untrusted /tmp/routerdeck-console-0.1.0-r1.apk
-# OpenWrt 24.10
-opkg install /tmp/routerdeck-console_0.1.0-r1_all.ipk
-```
-
-Open `http://<router>/routerdeck/` and log in with a router account (root by
-default). The package depends on rpcd, its ucode, luci-rpc and iwinfo modules,
-the ucode fs/ubus/uci modules, uhttpd with `/ubus`, and firewall4; standard
-OpenWrt images with LuCI already have all of them. For *New Shell*, install
-ttyd (`apk add ttyd` or `opkg install ttyd`); PPPoE needs `ppp-mod-pppoe`.
-UPnP, Dynamic DNS, Queues, Bandwidth Test and Wake on LAN appear once
-`miniupnpd-nftables`, `ddns-scripts`, `sqm-scripts`, `iperf3` and `etherwake`
-are installed; WireGuard needs `wireguard-tools` and `kmod-wireguard`.
-
-Removing the package (`apk del routerdeck-console` / `opkg remove
-routerdeck-console`) stops the Safe Mode watchdog and Netwatch, ends running
-diagnostics, deletes the runtime state in `/var/run/routerdeck` and leaves
-`/etc/config` as it is.
+Build the package and install `routerdeck-console` as described in
+[Installation](installation.md), then open `http://<router>/routerdeck/` and
+log in with a router account (root by default). Some windows need extra
+packages, listed on the same page; the menu hides UPnP, Dynamic DNS, Queues,
+Bandwidth Test and Wake on LAN until theirs is installed.
 
 ## How changes are made
 

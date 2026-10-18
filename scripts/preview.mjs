@@ -7,11 +7,6 @@ import { createMockUbus, MOCK_LOGIN } from './mock-ubus.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const consoleDir = resolve(root, 'routerdeck-console/htdocs/routerdeck');
-const mounts = [
- ['/preview/', resolve(root, 'preview')],
- ['/luci-static/routerdeck/', resolve(root, 'luci-theme-routerdeck/htdocs/luci-static/routerdeck')],
- ['/routerdeck/', consoleDir]
-];
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8' };
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 const ubus = createMockUbus({ version: pkg.version });
@@ -40,17 +35,12 @@ const server = http.createServer(async (req, res) => {
    res.writeHead(200, { 'Content-Type': 'application/x-targz', 'Content-Disposition': 'attachment; filename="backup.tar.gz"' });
    return res.end(gzipSync('etc/config/system: simulated backup of the preview router\n'));
   }
-  if (path === '/routerdeck') { res.writeHead(301, { Location: '/routerdeck/' }); return res.end(); }
+  if (path === '/' || path === '/routerdeck') { res.writeHead(302, { Location: '/routerdeck/' }); return res.end(); }
   let file;
-  if (path === '/' || path === '/index.html') file = resolve(root, 'preview/index.html');
-  else if (path === '/luci-static/routerdeck/dashboard.js') file = resolve(root, 'luci-app-routerdeck/htdocs/luci-static/routerdeck/dashboard.js');
-  else if (path === '/routerdeck/') file = resolve(consoleDir, 'index.html');
-  else {
-   const mount = mounts.find(([prefix]) => path.startsWith(prefix));
-   if (mount) {
-    const candidate = resolve(mount[1], path.slice(mount[0].length));
-    if (candidate.startsWith(mount[1] + '/')) file = candidate;
-   }
+  if (path === '/routerdeck/') file = resolve(consoleDir, 'index.html');
+  else if (path.startsWith('/routerdeck/')) {
+   const candidate = resolve(consoleDir, path.slice('/routerdeck/'.length));
+   if (candidate.startsWith(consoleDir + '/')) file = candidate;
   }
   if (!file) { res.writeHead(404); return res.end('Not found'); }
   let body = await readFile(file);
@@ -60,4 +50,4 @@ const server = http.createServer(async (req, res) => {
   res.end(body);
  } catch { res.writeHead(404); res.end('Not found'); }
 });
-server.listen(Number(process.env.PORT || 5173), '127.0.0.1', () => console.log(`RouterDeck preview: http://127.0.0.1:${server.address().port} (mock data only), console at /routerdeck/`));
+server.listen(Number(process.env.PORT || 5173), '127.0.0.1', () => console.log(`RouterDeck Console preview: http://127.0.0.1:${server.address().port}/routerdeck/ (mock data only)`));

@@ -1,56 +1,39 @@
 # Compatibility
 
-| Target | Published v0.1.0 | Current `main` |
-| --- | --- | --- |
-| OpenWrt 25.12.5 ARM64 `armsr/armv8` | Native APK, real LuCI and package lifecycle in QEMU | Integrated windows, contextual links and native form guards checked in QEMU |
-| OpenWrt 24.10.8 ARM64 `armsr/armv8` | Native IPK, real LuCI and package lifecycle in QEMU | Earlier contextual links checked; latest window/navigation/editor changes not revalidated |
-| Other 25.12/24.10 patch releases | Not individually tested | Not individually tested |
-| FriendlyWrt | Not certified | Requires matching modern ucode LuCI and firmware-specific validation |
-| NanoPi R3S-LTS | No physical device tested | No physical device tested |
-| Older Lua-only LuCI and snapshots | Unsupported | Unsupported |
+| Target | RouterDeck Console |
+| --- | --- |
+| OpenWrt 25.12.5 ARM64 `armsr/armv8` | Native APK; package lifecycle and console checks in QEMU, Wi-Fi on `mac80211_hwsim` radios, terminal through ttyd |
+| OpenWrt 24.10.8 ARM64 `armsr/armv8` | Native IPK; package lifecycle and console checks in QEMU (no ttyd or Wi-Fi radios in that guest) |
+| Other 25.12/24.10 patch releases | Not individually tested |
+| FriendlyWrt | Not certified; needs rpcd with ucode support, ucode modules and firewall4 |
+| NanoPi R3S-LTS | No physical device tested |
+| OpenWrt 23.05 and older | Not tested |
+| Builds with iptables firewall3 | Unsupported: the console needs firewall4 |
 
-The packages are noarch/all, but that does not prove compatibility with every
-firmware vendor's modified LuCI. Bootstrap is a required fallback dependency.
-No changes are made to core LuCI files, RPC methods, authentication or ACL grants.
-Current build results and the distinction between focused checks and the full
-release lifecycle are recorded in [Validation](testing.md).
+The package is architecture-independent, but that does not prove that every
+vendor firmware ships the same rpcd, ucode and netifd behaviour. The package
+manager must resolve every declared dependency; never force a dependency
+bypass on a router. [Validation](testing.md) records what was exercised.
 
-## What the dashboard means
+## Differences between 25.12 and 24.10
 
-- CPU shows **1-minute load average**, not utilization percentage.
-- WAN traffic is sampled from byte counters, in bytes/second; the first sample,
-  missing counters and counter resets produce an unavailable gap.
-- WAN selection is the first IPv4 default-route interface. Multi-WAN policy and
-  IPv6-only WAN detection need a future adapter.
-- DHCP entries are **leases**, not proof that a client is connected now.
-- WireGuard uses interface state and aggregate counters. No peer handshakes or
-  reachability claim is made; a running interface is not a verified VPN tunnel.
-- Thermal sensors and connection medium detection are unavailable in 0.1.
-- Optional RPC data can be unavailable under restricted accounts. RouterDeck
-  does not grant broader permissions to make these values appear.
+The console reads both and writes in the form each release uses:
 
-## Window limits
+- 24.10 stores the LAN address as `ipaddr` + `netmask`; the console shows it as
+  CIDR, and Undo restores the original file byte for byte.
+- 24.10's busybox `ip` has no JSON output and prints no route protocol, so
+  routes are parsed from text and an IPv6 route from `ip6assign` shows as
+  connected (C).
+- Packages come from opkg on 24.10 and apk on 25.12.
+- On 24.10 netifd learns the WireGuard protocol only after the network is
+  restarted once after installing it; the WireGuard tab says so.
+- `ddns-scripts` on 24.10 is a plain init script rather than a procd service;
+  the plugin starts it after a change.
 
-Current windows are part of the theme; v0.1.0 uses a separate Workspace page.
-Frames isolate LuCI globals,
-IDs and modal state while keeping ordinary same-origin sessions and CSRF checks.
-Standard save/apply actions are guarded against concurrent edited or stale
-windows, including the background page. Third-party forms with custom actions
-have not been audited; use normal navigation for those. A browser reload does
-not restore field values. Native
-LuCI controls still own UCI staging, rollback, uploads and session expiry.
+## What the windows do not establish
 
-OpenWrt enforces same-origin framing on these tested releases. RouterDeck does
-not disable frame protections. Firmware with stricter `frame-ancestors 'none'`
-may reject frames; use the window’s “Open as a page” link.
-
-## Limits of validation
-
-The v0.1.0 baseline includes native pages and hostname Save & Apply. Current
-window checks cover layout, validation, Save/revert and form guards; the latest
-Apply path has not been rerun end to end. These tests do not establish
-real Ethernet/Wi-Fi drivers, NAT performance, PPPoE negotiation, WireGuard peer
-connectivity, flash safety or backup restoration on hardware. Firmware flashing,
-package upgrades and network configuration are still the standard LuCI features;
-RouterDeck styles their original pages. No such destructive operations are run
-as part of the UI smoke tests.
+The checks run in virtual machines. They do not cover real Ethernet and Wi-Fi
+drivers, hardware offloading, NAT throughput, PPPoE negotiation with a real
+access concentrator, WireGuard handshakes with a remote peer, or temperature
+and fan sensors. See [Known limitations](console.md#known-limitations) for
+what the console itself does not model.

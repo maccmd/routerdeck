@@ -5,6 +5,10 @@
 инструменты), кроме проверки на настоящем NanoPi — у меня нет доступа к железу.
 Описание для пользователей — в [console.md](console.md).
 
+Прежняя тема для LuCI (`luci-theme-routerdeck`, `luci-app-routerdeck`,
+`luci-app-routerdeck-workspace`) удалена 2026-10-18: RouterDeck теперь — только
+консоль. Ссылки на файлы темы ниже остались как история плана.
+
 - **Готово:** Quick Set; WiFi (интерфейсы, радио, регистрация); Interfaces
   (+Networks); Bridge (Bridge, Ports, VLANs); PPP; IP → Addresses, Routes,
   Firewall (Filter, NAT, Connections, Zones), DHCP Server (DHCP, Leases,
