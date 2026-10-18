@@ -55,6 +55,12 @@ export const SOURCES = {
  'uci:dropbear': [() => uci('dropbear')().catch(() => ({})), 10000],
  'uci:ttyd': [() => uci('ttyd')().catch(() => ({})), 10000],
  neighbors: [() => client.call('routerdeck', 'neighbors'), 3000],
+ 'uci:upnpd': [() => uci('upnpd')().catch(() => ({})), 5000],
+ 'uci:ddns': [() => uci('ddns')().catch(() => ({})), 5000],
+ 'uci:sqm': [() => uci('sqm')().catch(() => ({})), 5000],
+ upnp: [() => client.call('routerdeck', 'upnp').catch(() => ({ mappings: [] })), 5000],
+ ddns: [() => client.call('routerdeck', 'ddns').catch(() => ({ services: {}, providers: [] })), 5000],
+ qdisc: [() => client.call('routerdeck', 'qdisc').catch(() => ({ devices: {} })), 3000],
  rules: [() => client.call('routerdeck', 'rules'), 5000],
  wireguard: [() => client.call('routerdeck', 'wireguard').catch(() => ({ available: false, interfaces: {} })), 3000],
  // Optional objects: without LuCI or procd's rc, these read as empty.

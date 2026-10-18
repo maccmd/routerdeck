@@ -12,10 +12,11 @@ import { servers, leases, bindings6, dhcpNetworks, dhcpOptions } from './dhcp.js
 import { ethernet, vlans, wireguard, wireguardPeers } from './ports.js';
 import { routingRules } from './routing.js';
 import { arp, neighbors6, ipServices } from './services.js';
+import { upnpSettings, upnpMappings, upnpRules, ddnsServices, sqmQueues } from './extras.js';
 import { dnsSettings, dnsStatic } from './dns.js';
 import { wifiInterfaces, wifiRadios, wifiRegistration } from './wireless.js';
 import { pppClients } from './ppp.js';
 import { quickSet } from './quickset.js';
 import { systemIdentity, systemClock, ntpClient, systemLogging, systemPassword, packages, scheduler, startup, resources, backup } from './system.js';
 
-export const MODELS = Object.fromEntries([ethernet, vlans, wireguard, wireguardPeers, addressLists, dhcpNetworks, dhcpOptions, routingRules, arp, neighbors6, ipServices, interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, quickSet, systemIdentity, systemClock, ntpClient, systemLogging, systemPassword, packages, scheduler, startup, resources, backup, log].map(model => [model.id, model]));
+export const MODELS = Object.fromEntries([upnpSettings, upnpMappings, upnpRules, ddnsServices, sqmQueues, ethernet, vlans, wireguard, wireguardPeers, addressLists, dhcpNetworks, dhcpOptions, routingRules, arp, neighbors6, ipServices, interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, quickSet, systemIdentity, systemClock, ntpClient, systemLogging, systemPassword, packages, scheduler, startup, resources, backup, log].map(model => [model.id, model]));

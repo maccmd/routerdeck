@@ -3,8 +3,9 @@
 // configuration snapshots, the action history and the Safe Mode record.
 'use strict';
 
-import { readfile, writefile, rename, unlink, mkdir, lsdir } from 'fs';
+import { readfile, writefile, rename, unlink, mkdir, lsdir, rmdir } from 'fs';
 import { connect } from 'ubus';
+import { cursor } from 'uci';
 
 export const RUN = '/var/run/routerdeck';
 export const HISTORY = RUN + '/history.json';
@@ -17,7 +18,7 @@ export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
 export const FILES = { crontab: '/etc/crontabs/root' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'crontab' ];
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'crontab' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -153,6 +154,94 @@ export function restart_wireguard(before_text, after_text) {
 		}
 	}
 	return restarted;
+};
+
+/* --- Merging a change into a file someone else touched ------------------ */
+
+let merge_serial = 0;
+
+// Loads a configuration text with its own uci cursor, apart from /etc/config.
+function with_config(name, text, action) {
+	let dir = sprintf('%s/merge.%d.%d', RUN, time(), ++merge_serial);
+	mkdir(dir, 0700);
+	mkdir(dir + '/delta', 0700);
+	writefile(dir + '/' + name, text);
+	let ctx = cursor(dir, dir + '/delta');
+	ctx.load(name);
+	let result = action(ctx, dir);
+	for (let file in lsdir(dir + '/delta') ?? [])
+		unlink(dir + '/delta/' + file);
+	rmdir(dir + '/delta');
+	for (let file in lsdir(dir) ?? [])
+		unlink(dir + '/' + file);
+	rmdir(dir);
+	return result;
+}
+
+const same = (a, b) => sprintf('%J', a) == sprintf('%J', b);
+const exists_in = (config, entry) => config[split(entry, ':')[0]] != null;
+const layout = config => map(sort(keys(config), (a, b) => config[a]['.index'] - config[b]['.index']), name => name + ':' + config[name]['.type']);
+
+// Applies the change from_text → to_text to current_text, which another
+// program changed meanwhile (miniupnpd writes its UUID, for example). This
+// is safe only when sections were neither added, removed nor moved outside
+// this history, so section names still mean the same sections, and when
+// none of the options this change touched were changed outside it. Returns
+// the merged text, or null when the change cannot be carried over.
+export function merge_config(name, from_text, to_text, current_text) {
+	if (FILES[name])
+		return null;
+	let from = with_config(name, from_text, ctx => ctx.get_all(name));
+	let to = with_config(name, to_text, ctx => ctx.get_all(name));
+	let now = with_config(name, current_text, ctx => ctx.get_all(name));
+	if (type(from) != 'object' || type(to) != 'object' || type(now) != 'object' || !same(layout(from), layout(now)))
+		return null;
+	let ops = [];
+	for (let section in uniq([ ...keys(from), ...keys(to) ])) {
+		let a = from[section], b = to[section], c = now[section];
+		if (a && !b) {
+			// A section this change added goes only if nobody edited it since.
+			for (let option in uniq([ ...keys(a), ...keys(c) ]))
+				if (substr(option, 0, 1) != '.' && !same(a[option], c[option]))
+					return null;
+			push(ops, [ 'delete', section ]);
+		}
+		else if (!a && b)
+			push(ops, [ 'create', section, b ]);
+		else {
+			for (let option in uniq([ ...keys(a), ...keys(b) ])) {
+				if (substr(option, 0, 1) == '.' || same(a[option], b[option]))
+					continue;
+				if (!same(c[option], a[option]))
+					return null;
+				push(ops, [ 'set', section, option, b[option] ]);
+			}
+		}
+	}
+	let moved = !same(layout(from), filter(layout(to), entry => exists_in(from, entry)));
+	return with_config(name, current_text, (ctx, dir) => {
+		for (let op in ops) {
+			if (op[0] == 'delete')
+				ctx.delete(name, op[1]);
+			else if (op[0] == 'create') {
+				ctx.set(name, op[1], op[2]['.type']);
+				for (let option, value in op[2])
+					if (substr(option, 0, 1) != '.')
+						ctx.set(name, op[1], option, value);
+			}
+			else if (op[3] == null)
+				ctx.delete(name, op[1], op[2]);
+			else
+				ctx.set(name, op[1], op[2], op[3]);
+		}
+		if (moved) {
+			let position = 0;
+			for (let entry in layout(to))
+				ctx.reorder(name, split(entry, ':')[0], position++);
+		}
+		ctx.commit(name);
+		return readfile(dir + '/' + name);
+	});
 };
 
 // LuCI's apply with rollback keeps snapshots here until it is confirmed.

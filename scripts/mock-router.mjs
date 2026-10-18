@@ -9,7 +9,7 @@ const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'crontab'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'crontab'];
 // Configurations kept as whole texts rather than UCI sections.
 const FILES = ['crontab'];
 const clone = value => structuredClone(value);
@@ -44,8 +44,20 @@ function initialConfigs() {
  const dropbear = { main: section('dropbear', 'main', 0, { enable: '1', PasswordAuth: 'on', RootPasswordAuth: 'on', Port: '22' }) };
  const uhttpd = { main: section('uhttpd', 'main', 0, { listen_http: ['0.0.0.0:80', '[::]:80'], listen_https: ['0.0.0.0:443', '[::]:443'], redirect_https: '0', home: '/www', rfc1918_filter: '1', cert: '/etc/uhttpd.crt', key: '/etc/uhttpd.key', ubus_prefix: '/ubus' }) };
  const ttyd = { cfg2392bd: section('ttyd', 'cfg2392bd', 0, { interface: '@lan', command: '/bin/login' }, true) };
+ // Package defaults captured on OpenWrt 25.12.5 (miniupnpd, ddns-scripts, sqm-scripts).
+ const upnpd = {
+  config: section('upnpd', 'config', 0, { enabled: '1', enable_natpmp: '1', enable_upnp: '1', secure_mode: '1', log_output: '0', download: '1024', upload: '512', internal_iface: 'lan', port: '5000', upnp_lease_file: '/var/run/miniupnpd.leases', igdv1: '1' }),
+  cfg2492bd: section('perm_rule', 'cfg2492bd', 1, { action: 'allow', ext_ports: '1024-65535', int_addr: '0.0.0.0/0', int_ports: '1024-65535', comment: 'Allow high ports' }, true),
+  cfg2592bd: section('perm_rule', 'cfg2592bd', 2, { action: 'deny', ext_ports: '0-65535', int_addr: '0.0.0.0/0', int_ports: '0-65535', comment: 'Default deny' }, true)
+ };
+ const ddns = {
+  global: section('ddns', 'global', 0, { ddns_dateformat: '%F %R', ddns_loglines: '250', upd_privateip: '0' }),
+  home: section('service', 'home', 1, { enabled: '1', service_name: 'duckdns.org', lookup_host: 'routerdeck-preview.duckdns.org', domain: 'routerdeck-preview.duckdns.org', username: 'NA', password: 'not-a-real-token', interface: 'wan', ip_source: 'network', ip_network: 'wan', use_api_check: '0' }),
+  myddns_ipv6: section('service', 'myddns_ipv6', 2, { update_url: 'http://[USERNAME]:[PASSWORD]@your.provider.net/nic/update?hostname=[DOMAIN]&myip=[IP]', lookup_host: 'yourhost.example.com', domain: 'yourhost.example.com', username: 'your_username', password: 'your_password', use_ipv6: '1', interface: 'wan6', ip_source: 'network', ip_network: 'wan6' })
+ };
+ const sqm = { eth0: section('queue', 'eth0', 0, { enabled: '1', interface: 'eth0', download: '85000', upload: '10000', qdisc: 'cake', script: 'piece_of_cake.qos', linklayer: 'none' }) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, crontab };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, crontab };
 }
 
 const CLIENTS = [
@@ -483,7 +495,8 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   boot: { start: 10, stop: 90, enabled: true }, system: { start: 10, enabled: true, running: true }, log: { start: 12, stop: 89, enabled: true, running: true },
   rpcd: { start: 12, enabled: true, running: true }, dnsmasq: { start: 19, enabled: true, running: true }, dropbear: { start: 19, stop: 50, enabled: true, running: true },
   firewall: { start: 19, enabled: true, running: false }, network: { start: 20, stop: 90, enabled: true, running: true }, odhcpd: { start: 35, stop: 85, enabled: true, running: true },
-  cron: { start: 50, enabled: true, running: true }, uhttpd: { start: 50, enabled: true, running: true }, sysntpd: { start: 98, enabled: true, running: true }, ttyd: { start: 99, enabled: false, running: false }
+  cron: { start: 50, enabled: true, running: true }, uhttpd: { start: 50, enabled: true, running: true }, sysntpd: { start: 98, enabled: true, running: true }, ttyd: { start: 99, enabled: false, running: false },
+  ddns: { start: 95, stop: 10, enabled: true, running: true }, miniupnpd: { start: 94, enabled: true, running: true }, sqm: { start: 50, enabled: true, running: false }
  };
  function serviceAction(name, action) {
   const service = services[name];
@@ -523,6 +536,24 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
     })) };
    }
    return { available: true, now: t, interfaces };
+  },
+  upnp: () => {
+   const t = Math.floor(now() / 1000);
+   return { installed: true, now: t, mappings: configs.upnpd.config?.enabled === '1' ? [
+    { protocol: 'UDP', external_port: 3074, address: '192.168.88.121', internal_port: 3074, expires: 0, description: 'Game console' },
+    { protocol: 'TCP', external_port: 51413, address: '192.168.88.120', internal_port: 51413, expires: t + 3600 - Math.floor(seconds()), description: 'Transmission at 192.168.88.120:51413' }
+   ] : [] };
+  },
+  ddns: () => ({
+   installed: true, now: Math.floor(now() / 1000),
+   services: Object.fromEntries(sectionsOf('ddns', 'service').map(item => [item['.name'], item.enabled === '1' ? { ip: '203.0.113.42', updated: Math.floor(started / 1000) - 600, running: true } : { ip: null, updated: null, running: false }])),
+   providers: ['afraid.org-v2-token', 'cloudflare.com-v4', 'duckdns.org', 'dynv6.com', 'freedns.42.pl', 'he.net', 'no-ip.com', 'ovh.com']
+  }),
+  qdisc: () => {
+   const t = Math.floor(seconds()), devices = {};
+   for (const name of ['eth0', 'eth1', 'br-lan', 'eth2', 'eth3']) devices[name] = { kind: 'fq_codel', handle: '0:', bytes: 1000000 + t * 5000, packets: 1000 + t * 5, dropped: 0 };
+   for (const queue of sectionsOf('sqm', 'queue').filter(item => item.enabled === '1')) devices[queue.interface] = { kind: queue.qdisc ?? 'cake', handle: '8001:', bytes: 90000000 + t * 120000, packets: 80000 + t * 100, dropped: 12 + Math.floor(t / 10) };
+   return { devices };
   },
   packages: () => ({ manager: 'apk', packages: PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested })) }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),

@@ -11,12 +11,12 @@
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "conntrack", "crontab", "diag", "fw_counters", "history", "info", "log", "neighbors", "packages", "routes", "rules", "terminal", "wireguard" ],
+				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "fw_counters", "history", "info", "log", "neighbors", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
 			},
-			"uci": [ "dhcp", "dropbear", "firewall", "network", "system", "ttyd", "uhttpd", "wireless" ]
+			"uci": [ "ddns", "dhcp", "dropbear", "firewall", "network", "sqm", "system", "ttyd", "uhttpd", "upnpd", "wireless" ]
 		},
 		"write": {
 			"ubus": {

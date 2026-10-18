@@ -17,7 +17,7 @@ import {
 	CONFIGS, FILES, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
-	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, restart_wireguard
+	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, restart_wireguard, merge_config
 } from 'routerdeck.core';
 
 const VERSION = '0.1.0';
@@ -412,6 +412,67 @@ function wireguard_key() {
 	return match(key, WG_KEY) ? key : null;
 }
 
+/* --- UPnP, dynamic DNS, queues -------------------------------------- */
+
+// miniupnpd's lease file: PROTO:EXT_PORT:INT_ADDR:INT_PORT:EXPIRES:DESCRIPTION
+function upnp() {
+	let ctx = cursor();
+	ctx.load('upnpd');
+	let file = ctx.get('upnpd', 'config', 'upnp_lease_file') ?? '/var/run/miniupnpd.leases';
+	let mappings = [];
+	for (let line in split(readfile(file) ?? '', '\n')) {
+		let fields = match(line, /^([A-Z]+):([0-9]+):([^:]+):([0-9]+):([0-9]+):(.*)$/);
+		if (fields)
+			push(mappings, { protocol: fields[1], external_port: int(fields[2]), address: fields[3], internal_port: int(fields[4]), expires: int(fields[5]), description: fields[6] });
+	}
+	return { installed: executable('/usr/sbin/miniupnpd'), now: time(), mappings };
+}
+
+// ddns-scripts writes the last registered address and update time per
+// service section into its run directory.
+function ddns() {
+	let ctx = cursor();
+	ctx.load('ddns');
+	let rundir = ctx.get('ddns', 'global', 'ddns_rundir') ?? '/var/run/ddns';
+	let services = {};
+	ctx.foreach('ddns', 'service', section => {
+		let name = section['.name'];
+		let pid = trim(readfile(rundir + '/' + name + '.pid') ?? '');
+		services[name] = {
+			ip: trim(readfile(rundir + '/' + name + '.ip') ?? '') || null,
+			updated: int(trim(readfile(rundir + '/' + name + '.update') ?? '0')) || null,
+			running: match(pid, /^[0-9]+$/) != null && access('/proc/' + pid)
+		};
+	});
+	let providers = [];
+	for (let dir in [ '/usr/share/ddns/default', '/usr/share/ddns/custom' ])
+		for (let file in lsdir(dir) ?? [])
+			if (match(file, /\.json$/))
+				push(providers, replace(file, /\.json$/, ''));
+	return { installed: executable('/usr/lib/ddns/dynamic_dns_updater.sh'), now: time(), services, providers: sort(uniq(providers)) };
+}
+
+// Root queueing disciplines per device, as SQM leaves them.
+function qdisc() {
+	let devices = {}, current = null;
+	for (let line in split(run('tc -s qdisc show').output, '\n')) {
+		let head = match(line, /^qdisc ([^ ]+) ([^ ]+) dev ([^ ]+) (root|parent [^ ]+)/);
+		if (head) {
+			current = head[4] == 'root' ? { kind: head[1], handle: head[2] } : null;
+			if (current)
+				devices[head[3]] = current;
+			continue;
+		}
+		let sent = current ? match(line, /^ Sent ([0-9]+) bytes ([0-9]+) pkt \(dropped ([0-9]+)/) : null;
+		if (sent) {
+			current.bytes = int(sent[1]);
+			current.packets = int(sent[2]);
+			current.dropped = int(sent[3]);
+		}
+	}
+	return { devices };
+}
+
 /* --- Packages and scheduler ------------------------------------------- */
 
 function apk_world() {
@@ -757,11 +818,17 @@ function undo_redo(direction) {
 		return failure('empty', direction == 'undo' ? 'Nothing to undo' : 'Nothing to redo');
 	let expected = direction == 'undo' ? target.after : target.before;
 	let wanted = direction == 'undo' ? target.before : target.after;
-	for (let name in target.configs)
-		if (config_text(name) != expected[name])
+	// A daemon may have written its own options since (miniupnpd's UUID);
+	// the change is then carried over onto the file as it is now.
+	let texts = {};
+	for (let name in target.configs) {
+		let current = config_text(name);
+		texts[name] = current == expected[name] ? wanted[name] : merge_config(name, expected[name], wanted[name], current);
+		if (texts[name] == null)
 			return failure('conflict', sprintf('%s was changed outside this history, so %s is not possible', name, direction));
+	}
 	for (let name in target.configs)
-		write_config(name, wanted[name]);
+		write_config(name, texts[name]);
 	if ('firewall' in target.configs)
 		sync_firewall_sets(expected.firewall, wanted.firewall);
 	announce(target.configs);
@@ -869,7 +936,10 @@ return {
 						rc: 'rc' in objects,
 						cron: executable('/usr/sbin/crond'),
 						backup: executable('/www/cgi-bin/cgi-backup'),
-						wireguard: executable('/usr/bin/wg')
+						wireguard: executable('/usr/bin/wg'),
+						upnp: executable('/usr/sbin/miniupnpd'),
+						ddns: executable('/usr/lib/ddns/dynamic_dns_updater.sh'),
+						sqm: executable('/usr/lib/sqm/run.sh')
 					}
 				};
 			}
@@ -904,6 +974,15 @@ return {
 		},
 		neighbors: {
 			call: () => neighbors()
+		},
+		upnp: {
+			call: () => upnp()
+		},
+		ddns: {
+			call: () => ddns()
+		},
+		qdisc: {
+			call: () => qdisc()
 		},
 		rules: {
 			call: () => rules()

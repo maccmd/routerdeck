@@ -15,7 +15,9 @@ export const MENU = [
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
   { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' },
   { id: 'ip-dns', label: 'DNS', window: 'ip-dns' },
-  { id: 'ip-services', label: 'Services', window: 'ip-services' }
+  { id: 'ip-ddns', label: 'Dynamic DNS', window: 'ip-ddns', requires: 'ddns' },
+  { id: 'ip-services', label: 'Services', window: 'ip-services' },
+  { id: 'ip-upnp', label: 'UPnP', window: 'ip-upnp', requires: 'upnp' }
  ] },
  { id: 'ipv6', label: 'IPv6', icon: 'ipv6', children: [
   { id: 'ipv6-addresses', label: 'Addresses', window: 'ipv6-addresses' },
@@ -25,6 +27,7 @@ export const MENU = [
  { id: 'routing', label: 'Routing', icon: 'routing', children: [
   { id: 'routing-rules', label: 'Rules', window: 'routing-rules' }
  ] },
+ { id: 'queues', label: 'Queues', icon: 'queues', window: 'queues', requires: 'sqm' },
  { id: 'system', label: 'System', icon: 'system', children: [
   { id: 'system-identity', label: 'Identity', window: 'system-identity' },
   { id: 'system-clock', label: 'Clock', window: 'system-clock' },

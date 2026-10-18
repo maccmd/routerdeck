@@ -204,7 +204,7 @@ test('Tab completes menus, commands, properties and values; ? lists them', async
  assert.deepEqual(await cli.complete('/ip/fi'), { text: '/ip/firewall ', options: [] });
  assert.deepEqual(await cli.complete('/ip firewall filter add ch'), { text: '/ip firewall filter add chain=', options: [] });
  assert.deepEqual(await cli.complete('/ip firewall filter add chain=f'), { text: '/ip firewall filter add chain=forward ', options: [] });
- assert.deepEqual((await cli.complete('/ip d')).options, ['dhcp-server', 'dns']);
+ assert.deepEqual((await cli.complete('/ip d')).options, ['ddns', 'dhcp-server', 'dns']);
  const help = await cli.help('/ip ');
  assert.ok(help.includes('address      -- Address'));
  assert.ok((await cli.help('/ip firewall filter add ')).some(line => line.startsWith('action=') && line.includes('accept|drop|reject|notrack')));

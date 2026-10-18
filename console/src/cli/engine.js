@@ -25,6 +25,8 @@ const TREE = {
   arp: { model: 'ip-arp' },
   route: { model: 'routes' },
   service: { model: 'ip-services' },
+  upnp: { model: 'upnp-settings', children: { mapping: { model: 'upnp-mappings' }, rule: { model: 'upnp-rules' } } },
+  ddns: { model: 'ddns-services' },
   firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, 'address-list': { model: 'fw-address-lists' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' } } },
   'dhcp-server': { model: 'dhcp-servers', children: { network: { model: 'dhcp-networks' }, lease: { model: 'dhcp-leases' }, option: { model: 'dhcp-options' } } },
   dns: { model: 'dns-settings', children: { static: { model: 'dns-static' } } }
@@ -36,6 +38,7 @@ const TREE = {
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
  routing: { children: { rule: { model: 'routing-rules' } } },
+ queue: { children: { sqm: { model: 'sqm-queues' } } },
  log: { model: 'log' },
  system: { commands: ['reboot'], children: {
   identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },

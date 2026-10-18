@@ -59,6 +59,19 @@ test('changes made outside the history block undo instead of overwriting them', 
  ssh(`uci delete firewall.${section} && uci commit firewall && /etc/init.d/firewall reload`);
 });
 
+test('Undo carries over options another program wrote meanwhile', async () => {
+ const name = 'RD-Merge-' + Date.now();
+ const defaults = ssh('uci -q get firewall.@defaults[0].synflood_rate || echo none');
+ await rpc(sid, 'routerdeck', 'apply', { description: 'Add rule ' + name, ops: [addRule(name)] });
+ // Like a daemon writing its own option: another section, another option.
+ ssh('uci set firewall.@defaults[0].synflood_rate=37/s && uci commit firewall');
+ expect(await rpc(sid, 'routerdeck', 'undo')).toMatchObject({ ok: true });
+ expect(ruleNames()).not.toContain(name);
+ expect(ssh('uci get firewall.@defaults[0].synflood_rate')).toBe('37/s');
+ ssh(defaults === 'none' ? 'uci delete firewall.@defaults[0].synflood_rate' : `uci set firewall.@defaults[0].synflood_rate=${defaults}`);
+ ssh('uci commit firewall && /etc/init.d/firewall reload');
+});
+
 test('invalid input is rejected and leaves the configuration unchanged', async () => {
  const before = ssh('sha256sum /etc/config/firewall /etc/config/network /etc/config/dhcp');
  const rejected = await rpc(sid, 'routerdeck', 'apply', { description: 'Bad rule', ops: [{ op: 'add', config: 'firewall', type: 'rule', values: { name: 'RD-Bad', src: 'wan', dest_port: 'notaport', target: 'ACCEPT' } }] });
