@@ -81,8 +81,8 @@ test('print shows flags, columns, comments and keeps numbers when filtered', asy
  const detail = await run('/ip address print detail where interface=lan');
  assert.deepEqual(detail, ['Flags: D - DYNAMIC; I - INVALID (NETWORK IS DOWN)', ' 2   address=192.168.77.1/24 network=192.168.77.0 interface=lan', '']);
  const dns = await run('/ip dns print');
- assert.ok(dns.includes('            local-domain: lan'));
- assert.ok(dns.includes('                 servers:'));
+ assert.ok(dns.some(line => /^ +local-domain: lan$/.test(line)));
+ assert.ok(dns.some(line => /^ +servers:$/.test(line)));
  assert.ok((await run('/system history print')).some(line => line.includes(' S Add rule')));
 });
 
@@ -127,7 +127,7 @@ test('add creates an item with its comment in one change', async () => {
 test('mistakes are reported the way RouterOS reports them', async () => {
  const { run, applied } = session();
  assert.deepEqual(await run('/ip firewall filter set 0 dest-port=80'), ['expected end of command: unknown property dest-port']);
- assert.deepEqual(await run('/ip firewall filter set 0 action=allow'), ['input does not match any value of action: accept, drop, reject, notrack']);
+ assert.deepEqual(await run('/ip firewall filter set 0 action=allow'), ['input does not match any value of action: accept, drop, reject']);
  assert.deepEqual(await run('/ip address set 99 address=1.1.1.1/8'), ['no such item (99)']);
  assert.deepEqual(await run('/ip address set 0 address=10.0.2.16/24'), ['failure: 10.0.2.15/24 is dynamic and cannot be changed']);
  assert.deepEqual(await run('/ip address add address=nonsense interface=lan'), ['failure: Enter an IPv4 address with a prefix, for example 192.168.88.1/24 (address)']);
@@ -207,5 +207,5 @@ test('Tab completes menus, commands, properties and values; ? lists them', async
  assert.deepEqual((await cli.complete('/ip d')).options, ['ddns', 'dhcp-server', 'dns']);
  const help = await cli.help('/ip ');
  assert.ok(help.includes('address      -- Address'));
- assert.ok((await cli.help('/ip firewall filter add ')).some(line => line.startsWith('action=') && line.includes('accept|drop|reject|notrack')));
+ assert.ok((await cli.help('/ip firewall filter add ')).some(line => line.startsWith('action=') && line.includes('accept|drop|reject')));
 });

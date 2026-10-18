@@ -7,6 +7,30 @@ import { isIPv4, canonicalIPv6, addressKey } from '../lib/ip.js';
 const SERVER = /^(\/[^/\s]+\/)?([0-9a-fA-F.:]+)(#[0-9]{1,5})?$/;
 const DNS_NAME = /^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}))*\.?$/;
 
+// dnsmasq options of the Advanced tab; `on` is dnsmasq's default in
+// OpenWrt's stock configuration.
+const ADVANCED = [
+ { id: 'domainneeded', label: "Don't Forward Plain Names", type: 'bool', on: true },
+ { id: 'boguspriv', label: 'Filter Private Reverse Lookups', type: 'bool', on: true },
+ { id: 'localise_queries', label: 'Localise Queries', type: 'bool', on: true },
+ { id: 'expandhosts', label: 'Expand Hosts', type: 'bool', on: true },
+ { id: 'strictorder', label: 'Query Servers in Order', type: 'bool' },
+ { id: 'allservers', label: 'Query All Servers', type: 'bool' },
+ { id: 'filter_aaaa', label: 'Filter IPv6 Answers', type: 'bool' },
+ { id: 'filter_a', label: 'Filter IPv4 Answers', type: 'bool' },
+ { id: 'nonegcache', label: "Don't Cache Negative Answers", type: 'bool' },
+ { id: 'min_cache_ttl', label: 'Cache Min TTL (s)', type: 'number', range: [0, 3600] },
+ { id: 'max_cache_ttl', label: 'Cache Max TTL (s)', type: 'number', range: [0, 604800] },
+ { id: 'ednspacket_max', label: 'Max UDP Packet Size', type: 'number', range: [512, 4096] },
+ { id: 'dnsforwardmax', label: 'Max Concurrent Queries', type: 'number', range: [1, 10000] },
+ { id: 'port', label: 'DNS Port', type: 'number', range: [0, 65535] },
+ { id: 'rebind_localhost', label: 'Allow Rebind to Localhost', type: 'bool' },
+ { id: 'rebind_domain', label: 'Rebind Allowed Domains', type: 'list' },
+ { id: 'addnhosts', label: 'Additional Hosts Files', type: 'list' },
+ { id: 'dnssec', label: 'DNSSEC (dnsmasq-full)', type: 'bool' },
+ { id: 'dnsseccheckunsigned', label: 'Check Unsigned Zones', type: 'bool', on: true }
+];
+
 export const dnsSettings = {
  id: 'dns-settings',
  noun: 'DNS Settings',
@@ -28,23 +52,32 @@ export const dnsSettings = {
    { id: 'cachesize', label: 'Cache Size', type: 'number', placeholder: '1000' },
    { id: 'domain', label: 'Local Domain', type: 'text', placeholder: 'lan' },
    { id: 'rebind_protection', label: 'Rebind Protection', type: 'bool' },
-   { id: 'logqueries', label: 'Log Queries', type: 'bool' }
+   { id: 'logqueries', label: 'Log Queries', type: 'bool' },
+   ...ADVANCED.map(field => ({ ...field, tab: 'Advanced' }))
   ];
  },
  values(row, data) {
   const section = sections(data['uci:dhcp'], 'dnsmasq').find(item => item['.name'] === row.section) ?? {};
   return {
    server: list(section.server), noresolv: truthy(section.noresolv), remote: !truthy(section.localservice, true),
-   cachesize: section.cachesize ?? '', domain: section.domain ?? '', rebind_protection: truthy(section.rebind_protection, true), logqueries: truthy(section.logqueries)
+   cachesize: section.cachesize ?? '', domain: section.domain ?? '', rebind_protection: truthy(section.rebind_protection, true), logqueries: truthy(section.logqueries),
+   ...Object.fromEntries(ADVANCED.map(field => [field.id, field.type === 'bool' ? truthy(section[field.id], field.on ?? false) : field.type === 'list' ? list(section[field.id]) : section[field.id] ?? '']))
   };
  },
  save(values, row, data, { dirty = null } = {}) {
   for (const server of values.server ?? []) if (!SERVER.test(server) || !(isIPv4(SERVER.exec(server)[2]) || canonicalIPv6(SERVER.exec(server)[2]))) invalid('server', `${server} is not a server address (use 192.0.2.53, 2001:db8::53, address#port or /domain/address)`);
   if (values.cachesize && !(/^\d+$/.test(values.cachesize) && Number(values.cachesize) <= 10000)) invalid('cachesize', 'Cache size is a number of entries up to 10000');
   if (values.domain && !DNS_NAME.test(values.domain)) invalid('domain', 'Enter a domain such as lan or home.arpa');
+  for (const field of ADVANCED.filter(item => item.range)) {
+   const value = values[field.id];
+   if (value && !(/^\d+$/.test(value) && Number(value) >= field.range[0] && Number(value) <= field.range[1])) invalid(field.id, `${field.range[0]} to ${field.range[1]}`);
+  }
+  for (const domain of values.rebind_domain ?? []) if (!DNS_NAME.test(domain.replace(/^\/|\/$/g, ''))) invalid('rebind_domain', `${domain} is not a domain`);
+  for (const file of values.addnhosts ?? []) if (!/^\/[\w./-]+$/.test(file)) invalid('addnhosts', `${file} is not an absolute path`);
   const options = compact({
    server: values.server ?? [], noresolv: values.noresolv ? '1' : '', localservice: values.remote ? '0' : '1', cachesize: values.cachesize,
-   domain: values.domain, local: values.domain ? `/${values.domain}/` : '', rebind_protection: values.rebind_protection ? '1' : '0', logqueries: values.logqueries ? '1' : ''
+   domain: values.domain, local: values.domain ? `/${values.domain}/` : '', rebind_protection: values.rebind_protection ? '1' : '0', logqueries: values.logqueries ? '1' : '',
+   ...Object.fromEntries(ADVANCED.map(field => [field.id, field.type === 'bool' ? (values[field.id] ? '1' : '0') : values[field.id] ?? '']))
   });
   const fieldOf = { localservice: 'remote', local: 'domain' };
   const changes = Object.fromEntries(Object.entries(options).filter(([key]) => !dirty || dirty.has(fieldOf[key] ?? key)));

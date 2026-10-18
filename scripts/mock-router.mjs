@@ -10,9 +10,16 @@ const capturedCerts = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl'];
 // Configurations kept as whole texts rather than UCI sections.
-const FILES = ['crontab'];
+const FILES = ['crontab', 'sysctl'];
+// Kernel defaults of the settings IP > Settings shows, as on OpenWrt 25.12.5.
+const SYSCTL_DEFAULTS = {
+ 'net.ipv4.ip_forward': '1', 'net.ipv6.conf.all.forwarding': '1', 'net.ipv4.conf.all.rp_filter': '0', 'net.ipv4.conf.default.rp_filter': '0', 'net.ipv4.conf.all.accept_redirects': '1',
+ 'net.ipv4.conf.all.send_redirects': '1', 'net.ipv4.conf.all.accept_source_route': '0', 'net.ipv4.tcp_syncookies': '1', 'net.ipv4.icmp_ratelimit': '1000', 'net.ipv4.icmp_echo_ignore_broadcasts': '1',
+ 'net.ipv4.neigh.default.base_reachable_time_ms': '30000', 'net.ipv4.neigh.default.gc_thresh3': '1024', 'net.ipv6.neigh.default.gc_thresh3': '1024', 'net.netfilter.nf_conntrack_max': '47104',
+ 'net.netfilter.nf_conntrack_tcp_timeout_established': '7440', 'net.netfilter.nf_conntrack_udp_timeout': '60', 'net.netfilter.nf_conntrack_udp_timeout_stream': '180', 'net.netfilter.nf_conntrack_acct': '1'
+};
 const clone = value => structuredClone(value);
 const section = (type, name, index, values, anonymous = false) => ({ '.anonymous': anonymous, '.type': type, '.name': name, '.index': index, ...values });
 
@@ -69,7 +76,8 @@ function initialConfigs() {
  const sqm = { eth0: section('queue', 'eth0', 0, { enabled: '1', interface: 'eth0', download: '85000', upload: '10000', qdisc: 'cake', script: 'piece_of_cake.qos', linklayer: 'none' }) };
  const routerdeck = { cfg2692bd: section('netwatch', 'cfg2692bd', 0, { host: '203.0.113.1', interval: '10', timeout: '1', down: 'logger -t netwatch-demo gateway lost', comment: 'Upstream gateway' }, true), cfg2792bd: section('netwatch', 'cfg2792bd', 1, { host: '192.168.88.250', interval: '30', timeout: '1' }, true) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab };
+ const sysctl = '# User defined entries should be added to this file not to /etc/sysctl.d/* as\n# that directory is not backed-up by default and will not survive a reimage\n';
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab, sysctl };
 }
 
 const CLIENTS = [
@@ -838,6 +846,12 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   mount: () => { syncMounts(); return { ok: true }; },
   reset: () => safe ? { ok: false, error: 'safemode', message: 'Leave Safe Mode before resetting the configuration' } : (lastReboot = now(), { ok: true, rebooting: true }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
+  // The file's values over the kernel's own, as sysctl applies them.
+  sysctl: ({ keys = [] } = {}) => {
+   const values = { ...SYSCTL_DEFAULTS };
+   for (const line of configs.sysctl.split('\n')) { const pair = /^\s*([a-z0-9_.-]+)\s*=\s*(.*)$/.exec(line); if (pair && pair[1] in values) values[pair[1]] = pair[2].trim(); }
+   return { values: Object.fromEntries(keys.filter(key => key in values).map(key => [key, values[key]])), text: configs.sysctl, path: '/etc/sysctl.conf' };
+  },
   services: () => clone(services), serviceAction,
   setLocaltime: seconds => { localOffset = seconds * 1000 - now(); return true; },
   setPassword: (username, password) => typeof password === 'string' && password.length > 0,

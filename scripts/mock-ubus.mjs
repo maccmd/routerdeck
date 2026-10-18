@@ -81,6 +81,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
    firmware: (args, sid) => [0, routerOf(sid).firmware(args)],
    reset: (args, sid) => [0, routerOf(sid).reset()],
    users: (args, sid) => [0, routerOf(sid).users(user(sid))],
+   sysctl: (args, sid) => [0, routerOf(sid).sysctl(args)],
    certificates: (args, sid) => [0, routerOf(sid).certificates()],
    trusted: (args, sid) => [0, routerOf(sid).trusted()],
    certificate: (args, sid) => [0, routerOf(sid).certificate(args)],

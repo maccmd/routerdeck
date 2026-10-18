@@ -120,7 +120,7 @@ test('menu items open known window kinds and hide missing capabilities', () => {
  assert.ok(items.every(item => WINDOW_KINDS[item.window]));
  assert.equal(visibleMenu(MENU, {}).some(item => item.id === 'luci'), false);
  assert.equal(visibleMenu(MENU, { luci: true }).some(item => item.id === 'luci'), true);
- assert.deepEqual(visibleMenu(MENU).find(item => item.id === 'ip').children.map(item => item.label), ['Addresses', 'ARP', 'Routes', 'Firewall', 'DHCP Server', 'DNS', 'Services']);
+ assert.deepEqual(visibleMenu(MENU).find(item => item.id === 'ip').children.map(item => item.label), ['Addresses', 'ARP', 'Routes', 'Firewall', 'DHCP Server', 'DNS', 'Pool', 'Services', 'Settings']);
 });
 
 test('status values distinguish missing data from zero', () => {

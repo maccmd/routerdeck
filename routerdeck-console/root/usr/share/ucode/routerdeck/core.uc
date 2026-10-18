@@ -17,8 +17,8 @@ export const DELTA = RUN + '/uci';
 export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
-export const FILES = { crontab: '/etc/crontabs/root' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab' ];
+export const FILES = { crontab: '/etc/crontabs/root', sysctl: '/etc/sysctl.conf' };
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -100,9 +100,9 @@ export function announce(names) {
 	if (!bus)
 		return false;
 	for (let name in names) {
-		// rpcd reads logins at every login; block-mount is handled by
-		// sync_mounts. Neither needs a reload.
-		if (name in [ 'rpcd', 'fstab' ])
+		// rpcd reads logins at every login; block-mount and sysctl are
+		// handled by sync_mounts and sync_sysctl. None needs a reload.
+		if (name in [ 'rpcd', 'fstab', 'sysctl' ])
 			continue;
 		// crond has no configuration trigger; it reads its tables at start.
 		if (name == 'crontab')
@@ -153,6 +153,44 @@ export function sync_mounts(before_text, after_text) {
 			system(sprintf("umount '%s' >/dev/null 2>&1", replace(target, "'", '')));
 	if (access('/sbin/block', 'x'))
 		system('/sbin/block mount >/dev/null 2>&1');
+	return true;
+};
+
+// Kernel settings in /etc/sysctl.conf take effect at once. A setting taken
+// out of the file goes back to the value it had before the console first
+// changed it (kept until reboot, when the files apply anew).
+const SYSCTL_KEY = /^[a-z0-9_]+(\.[a-z0-9_-]+)+$/;
+const SYSCTL_ORIGINAL = RUN + '/sysctl-original.json';
+
+function sysctl_values(text) {
+	let values = {};
+	for (let line in split(text ?? '', '\n')) {
+		let pair = match(trim(line), /^([a-z0-9_.-]+)[ \t]*=[ \t]*(.*)$/);
+		if (pair && match(pair[1], SYSCTL_KEY))
+			values[pair[1]] = trim(pair[2]);
+	}
+	return values;
+}
+
+export const sysctl_path = key => '/proc/sys/' + replace(key, /\./g, '/');
+
+export function sync_sysctl(before_text, after_text) {
+	let before = sysctl_values(before_text), after = sysctl_values(after_text);
+	let originals = read_json(SYSCTL_ORIGINAL, {});
+	for (let key, value in after) {
+		if (originals[key] == null) {
+			let current = readfile(sysctl_path(key));
+			if (current != null)
+				originals[key] = trim(current);
+		}
+		if (before[key] != value)
+			writefile(sysctl_path(key), value);
+	}
+	for (let key, value in before)
+		if (!(key in after) && originals[key] != null)
+			writefile(sysctl_path(key), originals[key]);
+	ensure_dirs();
+	write_json(SYSCTL_ORIGINAL, originals);
 	return true;
 };
 
@@ -380,6 +418,8 @@ export function safe_restore(state, reason) {
 				restart_wireguard(current, saved);
 			if (name == 'fstab')
 				sync_mounts(current, saved);
+			if (name == 'sysctl')
+				sync_sysctl(current, saved);
 			if (name == 'system')
 				sync_leds(current, saved);
 		}

@@ -20,7 +20,7 @@ const TREE = {
   ethernet: { model: 'ethernet' },
   vlan: { model: 'vlans' },
   wireguard: { model: 'wireguard', children: { peers: { model: 'wireguard-peers' } } },
-  wifi: { model: 'wifi-interfaces', children: { radio: { model: 'wifi-radios' }, 'registration-table': { model: 'wifi-registration' } } }
+  wifi: { model: 'wifi-interfaces', children: { radio: { model: 'wifi-radios' }, 'registration-table': { model: 'wifi-registration' }, 'access-list': { model: 'wifi-access-list' } } }
  } },
  ip: { children: {
   address: { model: 'addresses' },
@@ -29,7 +29,9 @@ const TREE = {
   service: { model: 'ip-services' },
   upnp: { model: 'upnp-settings', children: { mapping: { model: 'upnp-mappings' }, rule: { model: 'upnp-rules' } } },
   ddns: { model: 'ddns-services' },
-  firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, 'address-list': { model: 'fw-address-lists' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' } } },
+  firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, mangle: { model: 'fw-mangle' }, raw: { model: 'fw-raw' }, 'address-list': { model: 'fw-address-lists' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' }, settings: { model: 'fw-settings' } } },
+  settings: { model: 'ip-settings' },
+  pool: { model: 'ip-pools' },
   'dhcp-server': { model: 'dhcp-servers', children: { network: { model: 'dhcp-networks' }, lease: { model: 'dhcp-leases' }, option: { model: 'dhcp-options' } } },
   dns: { model: 'dns-settings', children: { static: { model: 'dns-static' } } }
  } },

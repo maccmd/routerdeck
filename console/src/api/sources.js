@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { createPoller } from './poller.js';
 import { client } from '../state.js';
+import { SYSCTL_KEYS } from '../model/ipsettings.js';
 
 export const poller = createPoller();
 
@@ -79,6 +80,7 @@ export const SOURCES = {
  packages: [() => client.call('routerdeck', 'packages'), 60000],
  jobs: [() => client.call('routerdeck', 'diag', { action: 'list' }).then(reply => reply ?? { jobs: [] }), 2000],
  users: [() => client.call('routerdeck', 'users'), 10000],
+ sysctl: [() => client.call('routerdeck', 'sysctl', { keys: SYSCTL_KEYS }), 10000],
  certificates: [() => client.call('routerdeck', 'certificates'), 30000],
  trusted: [() => client.call('routerdeck', 'trusted'), 600000],
  leds: [() => client.call('routerdeck', 'leds').catch(() => ({ leds: [] })), 3000],

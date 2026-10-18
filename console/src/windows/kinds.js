@@ -11,9 +11,9 @@ export const WINDOW_KINDS = {
  'ip-addresses': { title: 'Address List', size: { w: 500, h: 300 }, tabs: [{ label: 'Addresses', model: 'addresses' }] },
  'ip-routes': { title: 'Route List', size: { w: 760, h: 340 }, tabs: [{ label: 'Routes', model: 'routes' }] },
  'ip-firewall': { title: 'Firewall', size: { w: 960, h: 420 }, tabs: [
-  { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Address Lists', model: 'fw-address-lists' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }
+  { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Mangle', model: 'fw-mangle' }, { label: 'Raw', model: 'fw-raw' }, { label: 'Address Lists', model: 'fw-address-lists' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }, { label: 'Settings', model: 'fw-settings' }
  ] },
- wifi: { title: 'WiFi', size: { w: 900, h: 320 }, tabs: [{ label: 'WiFi Interfaces', model: 'wifi-interfaces' }, { label: 'Radios', model: 'wifi-radios' }, { label: 'Registration', model: 'wifi-registration' }] },
+ wifi: { title: 'WiFi', size: { w: 900, h: 320 }, tabs: [{ label: 'WiFi Interfaces', model: 'wifi-interfaces' }, { label: 'Radios', model: 'wifi-radios' }, { label: 'Registration', model: 'wifi-registration' }, { label: 'Access List', model: 'wifi-access-list' }] },
  ppp: { title: 'PPP', size: { w: 860, h: 280 }, tabs: [{ label: 'Interface', model: 'ppp' }] },
  bridge: { title: 'Bridge', size: { w: 820, h: 340 }, tabs: [{ label: 'Bridge', model: 'bridges' }, { label: 'Ports', model: 'bridge-ports' }, { label: 'VLANs', model: 'bridge-vlans' }] },
  'ipv6-addresses': { title: 'IPv6 Address List', size: { w: 720, h: 320 }, tabs: [{ label: 'Addresses', model: 'addresses6' }] },
@@ -42,6 +42,8 @@ export const WINDOW_KINDS = {
  'routing-rules': { title: 'Routing Rules', size: { w: 900, h: 320 }, tabs: [{ label: 'Rules', model: 'routing-rules' }] },
  'ip-arp': { title: 'ARP List', size: { w: 640, h: 320 }, tabs: [{ label: 'ARP', model: 'ip-arp' }] },
  'ipv6-neighbors': { title: 'IPv6 Neighbor List', size: { w: 760, h: 320 }, tabs: [{ label: 'Neighbors', model: 'ipv6-neighbors' }] },
+ 'ip-settings': { title: 'IP Settings', size: { w: 560, h: 380 }, tabs: [{ label: 'Settings', model: 'ip-settings' }] },
+ 'ip-pool': { title: 'IP Pool', size: { w: 560, h: 260 }, tabs: [{ label: 'Pools', model: 'ip-pools' }] },
  'ip-services': { title: 'IP Service List', size: { w: 660, h: 260 }, tabs: [{ label: 'Services', model: 'ip-services' }] },
  'ip-upnp': { title: 'UPnP', size: { w: 760, h: 380 }, tabs: [{ label: 'Settings', model: 'upnp-settings' }, { label: 'Mappings', model: 'upnp-mappings' }, { label: 'Rules', model: 'upnp-rules' }] },
  'ip-ddns': { title: 'Dynamic DNS', size: { w: 900, h: 320 }, tabs: [{ label: 'Services', model: 'ddns-services' }] },

@@ -82,7 +82,12 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | IP ▸ Firewall ▸ Filter Rules | `rule` sections in order, nftables counters | X disabled | Drag to reorder; comment is the rule `name`; counters reset on every fw4 reload |
 | IP ▸ Firewall ▸ NAT | `redirect` (dst-nat), `nat` (src-nat, masquerade), zone masquerading | X, D zone masquerading | New src-nat rules are `nat` sections |
 | IP ▸ Firewall ▸ Connections | `/proc/net/nf_conntrack` | A assured, U unreplied | First 2048 entries |
-| IP ▸ Firewall ▸ Zones | `zone` and `forwarding` sections | X disabled | A zone used by rules cannot be removed |
+| IP ▸ Firewall ▸ Zones | `zone` and `forwarding` sections | X disabled | A zone used by rules cannot be removed; Advanced: family, covered devices and subnets, IPv6 masquerading and its sources and destinations, logging, connection helpers |
+| IP ▸ Firewall ▸ Mangle | `rule` sections with target MARK or DSCP | X disabled | Mark packets or change DSCP in prerouting, input, forward, output or postrouting; fw4 picks the chain from the zones, and the form sets them that way |
+| IP ▸ Firewall ▸ Raw | `rule` sections with target NOTRACK or HELPER | X disabled | Skip connection tracking, or attach a connection helper, for traffic from one zone |
+| IP ▸ Firewall ▸ Settings | the `defaults` section | — | Policies, invalid packets, SYN flood protection, SYN cookies and FastPath (software and hardware flow offloading) |
+| IP ▸ Settings | `/etc/sysctl.conf` and `/proc/sys` | — | Forwarding, RP filter, redirects, source routing, SYN cookies, ICMP rate, neighbour table and connection tracking limits and timeouts; applied at once, and Undo writes back the value from before the first change |
+| IP ▸ Pool | `start` and `limit` of each `dhcp` section | X ignored | The range of a DHCP server, with how many addresses are leased |
 | Bridge ▸ Bridge | `device` sections of type bridge | R running, D dynamic, I not created yet | OpenWrt creates a bridge only once a network uses it; STP, IGMP snooping, MTU, MAC |
 | Bridge ▸ Ports | the bridge's `ports` list; members added at runtime | R running, I missing, D dynamic | PVID and tagged VLANs per port; removing a port also removes it from the bridge's VLANs |
 | Bridge ▸ VLANs | `bridge-vlan` sections | I not active | Tagged, untagged and PVID ports; one PVID per port; the first VLAN turns on VLAN filtering |
@@ -91,10 +96,11 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | IP ▸ DHCP Server ▸ DHCP | `dhcp` sections | X ignored | Address pool from the network's first address |
 | IP ▸ DHCP Server ▸ Leases | active DHCPv4 leases and `host` sections | X disabled, D dynamic | *Make Static* reserves a dynamic lease. A lease does not prove a client is online |
 | IP ▸ DHCP Server ▸ DHCPv6 Bindings | odhcpd's DHCPv6 leases and `host` sections with a DUID | X, D | *Make Static* stores the DUID and a host ID, so the client keeps its address suffix |
-| IP ▸ DNS ▸ Settings | the `dnsmasq` section | — | Servers, dynamic servers from the networks, remote requests, cache, local domain, rebind protection, query log |
+| IP ▸ DNS ▸ Settings | the `dnsmasq` section | — | Servers, dynamic servers from the networks, remote requests, cache, local domain, rebind protection, query log; Advanced: forwarding rules, AAAA/A filtering, cache TTLs, packet size, concurrent queries, port, rebind exceptions, extra hosts files, DNSSEC (dnsmasq-full) |
 | IP ▸ DNS ▸ Static | `domain` (A/AAAA) and `cname` sections | X disabled | Answered by dnsmasq at once |
-| WiFi ▸ WiFi Interfaces | `wifi-iface` sections and runtime state (`luci-rpc getWirelessDevices`, iwinfo) | R running, X disabled | Access points and stations: SSID, radio, networks, security and passphrase, hidden SSID, client isolation |
-| WiFi ▸ Radios | `wifi-device` sections | X disabled | Band, channel, width, country, Tx power |
+| WiFi ▸ WiFi Interfaces | `wifi-iface` sections and runtime state (`luci-rpc getWirelessDevices`, iwinfo) | R running, X disabled | Access points and stations: SSID, radio, networks, security and passphrase, hidden SSID, client isolation; roaming (802.11r with mobility domain, 802.11k, 802.11v), management frame protection, client limits, inactivity, WMM, DTIM, group rekeying, MAC filter |
+| WiFi ▸ Radios | `wifi-device` sections | X disabled | Band, channel, width, country, Tx power; beacon interval, RTS and fragmentation thresholds, distance, cell density, legacy rates |
+| WiFi ▸ Access List | `macfilter` and `maclist` of each access point | X filter off, C connected | One policy per access point, as OpenWrt has it: allow only listed clients, or deny listed ones |
 | WiFi ▸ Registration | iwinfo association lists | — | Connected clients with signal, rates, uptime and DHCP host names |
 | PPP | `interface` sections with a PPP protocol | R connected, X disabled | PPPoE and other PPP clients: user, password, service, AC, peer DNS, default route, keepalive, MTU, zone |
 | Quick Set | `wan` and `lan` networks, their DHCP server and zone, LAN access points, `system` | — | One change for everything edited; see above |
@@ -164,8 +170,9 @@ names come from the form labels (*Src. Address* is `src-address`).
 
 - Menus: `/interface` (`bridge`, `bridge port`, `bridge vlan`, `ethernet`,
   `vlan`, `wireguard`, `wireguard peers`, `network`, `pppoe-client`, `wifi`,
-  `wifi radio`, `wifi registration-table`), `/ip` (`address`, `arp`, `route`,
-  `firewall filter|nat|address-list|connection|zone`, `dhcp-server`,
+  `wifi radio`, `wifi registration-table`, `wifi access-list`), `/ip` (`address`, `arp`, `route`,
+  `firewall filter|nat|mangle|raw|address-list|connection|zone|settings`,
+  `settings`, `pool`, `dhcp-server`,
   `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
   `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
   `dhcp-server binding`), `/routing rule`, `/queue sqm`, `/log`, `/system`
@@ -205,7 +212,7 @@ Bandwidth Test and Wake on LAN until theirs is installed.
 Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 `redo`, `safemode`). The plugin changes only `network`, `firewall`, `dhcp`,
 `wireless`, `system`, `dropbear`, `uhttpd`, `ttyd`, `upnpd`, `ddns`, `sqm`,
-`routerdeck`, `rpcd`, `fstab` and `/etc/crontabs/root`, and:
+`routerdeck`, `rpcd`, `fstab`, `/etc/crontabs/root` and `/etc/sysctl.conf`, and:
 
 1. refuses to run while LuCI is waiting to confirm an *apply with rollback*,
    so the two rollbacks cannot overwrite each other;

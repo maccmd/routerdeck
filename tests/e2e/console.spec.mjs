@@ -62,7 +62,7 @@ test('menu opens cascaded windows without moving the open ones', async ({ page }
  expect(await rect(interfaces)).toEqual(first);
  const addresses = await rect(win(page, 'Address List'));
  expect([addresses.x - first.x, addresses.y - first.y]).toEqual([24, 24]);
- await expect(win(page, 'Firewall').getByRole('tab')).toHaveText(['Filter Rules', 'NAT', 'Address Lists', 'Connections', 'Zones']);
+ await expect(win(page, 'Firewall').getByRole('tab')).toHaveText(['Filter Rules', 'NAT', 'Mangle', 'Raw', 'Address Lists', 'Connections', 'Zones', 'Settings']);
  await expect(win(page, 'Log').getByRole('status').first()).toHaveText(/^\d+ items/);
  // A single-instance window is brought to the front, not opened twice.
  await page.getByRole('menuitem', { name: 'Interfaces' }).click();

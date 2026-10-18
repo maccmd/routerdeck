@@ -49,7 +49,7 @@ test('print, add and undo from the command line change what the windows show', a
  await expect(firewall.locator('.rd-grid-row')).toHaveCount(0);
  // Mistakes are reported, not applied.
  await run('/ip firewall filter set 0 action=allow');
- await expect(output.locator('.is-error').last()).toHaveText('input does not match any value of action: accept, drop, reject, notrack');
+ await expect(output.locator('.is-error').last()).toHaveText('input does not match any value of action: accept, drop, reject');
 });
 
 test('menus, Tab, ? and history work like a RouterOS terminal', async ({ page }) => {

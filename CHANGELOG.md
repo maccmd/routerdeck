@@ -62,6 +62,11 @@
   ones, parsed in the browser; regenerate, import, restore the previous),
   LEDs and Disks with mount points, swap and block-mount settings that mount
   and unmount at once.
+- Add IP ▸ Settings (kernel settings in /etc/sysctl.conf, applied at once and
+  undoable), IP ▸ Pool, Firewall ▸ Mangle (mark, DSCP), Raw (notrack, helpers)
+  and Settings (policies, SYN flood protection, FastPath flow offloading),
+  advanced zone, DNS, WiFi (802.11r/k/v, MFP, limits) and radio options, and
+  the WiFi access list.
 
 ### Removed
 

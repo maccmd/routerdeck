@@ -17,7 +17,7 @@ import {
 	CONFIGS, FILES, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
-	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, sync_mounts, sync_leds, restart_wireguard, merge_config
+	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, sync_mounts, sync_leds, sync_sysctl, sysctl_path, restart_wireguard, merge_config
 } from 'routerdeck.core';
 
 const VERSION = '0.1.0';
@@ -849,6 +849,21 @@ function reset() {
 	return { ok: true, rebooting: true };
 }
 
+/* --- Kernel settings ------------------------------------------------------ */
+
+// Current values of the settings IP > Settings shows, and the file that
+// sets them.
+function sysctl(args) {
+	let values = {};
+	for (let key in type(args.keys) == 'array' ? slice(args.keys, 0, 64) : [])
+		if (type(key) == 'string' && match(key, /^[a-z0-9_]+(\.[a-z0-9_-]+)+$/)) {
+			let value = readfile(sysctl_path(key));
+			if (value != null)
+				values[key] = trim(value);
+		}
+	return { values, text: config_text('sysctl'), path: FILES.sysctl };
+}
+
 /* --- Users, certificates, LEDs and disks ------------------------------- */
 
 // rpcd logins without their password hashes: only what kind of password a
@@ -1323,6 +1338,8 @@ function apply(request) {
 		sync_firewall_sets(before.firewall, config_text('firewall'));
 	if ('fstab' in changed)
 		sync_mounts(before.fstab, config_text('fstab'));
+	if ('sysctl' in changed)
+		sync_sysctl(before.sysctl, config_text('sysctl'));
 	announce(changed);
 	if ('system' in changed)
 		sync_leds(before.system, config_text('system'));
@@ -1405,6 +1422,8 @@ function undo_redo(direction) {
 		sync_firewall_sets(expected.firewall, wanted.firewall);
 	if ('fstab' in target.configs)
 		sync_mounts(expected.fstab, wanted.fstab);
+	if ('sysctl' in target.configs)
+		sync_sysctl(expected.sysctl, wanted.sysctl);
 	announce(target.configs);
 	if ('system' in target.configs)
 		sync_leds(expected.system, wanted.system);
@@ -1577,6 +1596,10 @@ return {
 		},
 		users: {
 			call: request => users(request)
+		},
+		sysctl: {
+			args: { keys: [] },
+			call: request => sysctl(request.args)
 		},
 		certificates: {
 			call: () => certificates()

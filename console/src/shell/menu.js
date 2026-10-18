@@ -15,8 +15,10 @@ export const MENU = [
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
   { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' },
   { id: 'ip-dns', label: 'DNS', window: 'ip-dns' },
+  { id: 'ip-pool', label: 'Pool', window: 'ip-pool' },
   { id: 'ip-ddns', label: 'Dynamic DNS', window: 'ip-ddns', requires: 'ddns' },
   { id: 'ip-services', label: 'Services', window: 'ip-services' },
+  { id: 'ip-settings', label: 'Settings', window: 'ip-settings' },
   { id: 'ip-upnp', label: 'UPnP', window: 'ip-upnp', requires: 'upnp' }
  ] },
  { id: 'ipv6', label: 'IPv6', icon: 'ipv6', children: [
