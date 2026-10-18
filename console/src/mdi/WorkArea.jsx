@@ -30,7 +30,7 @@ export function WorkArea() {
   <div class="rd-workarea" ref={ref} aria-label="Work area">
    {list.filter(win => !win.minimized).map(win => (
     <Window key={win.id} win={win} active={top?.id === win.id} compact={compact}>
-     <WindowBody kind={win.kind} />
+     <WindowBody win={win} />
     </Window>
    ))}
    {list.filter(win => win.minimized).map((win, index) => (

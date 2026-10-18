@@ -1,0 +1,946 @@
+{
+ "devices": {
+  "eth0": {
+   "name": "eth0",
+   "master": "br-lan",
+   "wireless": false,
+   "up": true,
+   "mtu": 1500,
+   "qlen": 1000,
+   "devtype": "ethernet",
+   "ipaddrs": [],
+   "ip6addrs": [],
+   "mac": "52:54:00:12:34:56",
+   "type": 1,
+   "ifindex": 2,
+   "stats": {
+    "rx_bytes": 29058011,
+    "tx_bytes": 142005803,
+    "tx_errors": 0,
+    "rx_errors": 0,
+    "tx_packets": 208686,
+    "rx_packets": 221744,
+    "multicast": 0,
+    "collisions": 0,
+    "rx_dropped": 0,
+    "tx_dropped": 0
+   },
+   "flags": {
+    "up": true,
+    "broadcast": true,
+    "promisc": false,
+    "loopback": false,
+    "noarp": false,
+    "multicast": true,
+    "pointtopoint": false
+   },
+   "link": {
+    "speed": -1,
+    "duplex": "unknown",
+    "carrier": true,
+    "changes": 4,
+    "up_count": 2,
+    "down_count": 2
+   }
+  },
+  "lo": {
+   "name": "lo",
+   "wireless": false,
+   "up": true,
+   "mtu": 65536,
+   "qlen": 1000,
+   "devtype": "ethernet",
+   "ipaddrs": [
+    {
+     "address": "127.0.0.1",
+     "netmask": "255.0.0.0"
+    }
+   ],
+   "ip6addrs": [
+    {
+     "address": "::1",
+     "netmask": "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+    }
+   ],
+   "type": 772,
+   "ifindex": 1,
+   "stats": {
+    "rx_bytes": 1143974,
+    "tx_bytes": 1143974,
+    "tx_errors": 0,
+    "rx_errors": 0,
+    "tx_packets": 14841,
+    "rx_packets": 14841,
+    "multicast": 0,
+    "collisions": 0,
+    "rx_dropped": 0,
+    "tx_dropped": 0
+   },
+   "flags": {
+    "up": true,
+    "broadcast": false,
+    "promisc": false,
+    "loopback": true,
+    "noarp": false,
+    "multicast": false,
+    "pointtopoint": false
+   },
+   "link": {
+    "carrier": true,
+    "changes": 0,
+    "up_count": 0,
+    "down_count": 0
+   }
+  },
+  "eth1": {
+   "name": "eth1",
+   "wireless": false,
+   "up": true,
+   "mtu": 1500,
+   "qlen": 1000,
+   "devtype": "ethernet",
+   "ipaddrs": [
+    {
+     "address": "10.0.2.15",
+     "netmask": "255.255.255.0",
+     "broadcast": "10.0.2.255"
+    }
+   ],
+   "ip6addrs": [
+    {
+     "address": "fec0::5054:ff:fe12:3457",
+     "netmask": "ffff:ffff:ffff:ffff::"
+    },
+    {
+     "address": "fe80::5054:ff:fe12:3457",
+     "netmask": "ffff:ffff:ffff:ffff::"
+    }
+   ],
+   "mac": "52:54:00:12:34:57",
+   "type": 1,
+   "ifindex": 3,
+   "stats": {
+    "rx_bytes": 1775846,
+    "tx_bytes": 297730,
+    "tx_errors": 0,
+    "rx_errors": 0,
+    "tx_packets": 2797,
+    "rx_packets": 2476,
+    "multicast": 0,
+    "collisions": 0,
+    "rx_dropped": 0,
+    "tx_dropped": 0
+   },
+   "flags": {
+    "up": true,
+    "broadcast": true,
+    "promisc": false,
+    "loopback": false,
+    "noarp": false,
+    "multicast": true,
+    "pointtopoint": false
+   },
+   "link": {
+    "speed": -1,
+    "duplex": "unknown",
+    "carrier": true,
+    "changes": 2,
+    "up_count": 1,
+    "down_count": 1
+   }
+  },
+  "br-lan": {
+   "name": "br-lan",
+   "bridge": true,
+   "ports": [
+    "eth0"
+   ],
+   "id": "7fff.525400123456",
+   "stp": false,
+   "wireless": false,
+   "up": true,
+   "mtu": 1500,
+   "qlen": 1000,
+   "devtype": "bridge",
+   "ipaddrs": [
+    {
+     "address": "192.168.77.1",
+     "netmask": "255.255.255.0",
+     "broadcast": "192.168.77.255"
+    }
+   ],
+   "ip6addrs": [
+    {
+     "address": "fd50:b8c1:5fb2::1",
+     "netmask": "ffff:ffff:ffff:fff0::"
+    },
+    {
+     "address": "fe80::5054:ff:fe12:3456",
+     "netmask": "ffff:ffff:ffff:ffff::"
+    }
+   ],
+   "mac": "52:54:00:12:34:56",
+   "type": 1,
+   "ifindex": 4,
+   "stats": {
+    "rx_bytes": 25818777,
+    "tx_bytes": 142001029,
+    "tx_errors": 0,
+    "rx_errors": 0,
+    "tx_packets": 208675,
+    "rx_packets": 218376,
+    "multicast": 254,
+    "collisions": 0,
+    "rx_dropped": 0,
+    "tx_dropped": 2
+   },
+   "flags": {
+    "up": true,
+    "broadcast": true,
+    "promisc": false,
+    "loopback": false,
+    "noarp": false,
+    "multicast": true,
+    "pointtopoint": false
+   },
+   "link": {
+    "speed": -1,
+    "duplex": "unknown",
+    "carrier": true,
+    "changes": 2,
+    "up_count": 1,
+    "down_count": 1
+   }
+  }
+ },
+ "ifaces": [
+  {
+   "interface": "lan",
+   "up": true,
+   "pending": false,
+   "available": true,
+   "autostart": true,
+   "dynamic": false,
+   "uptime": 76623,
+   "l3_device": "br-lan",
+   "proto": "static",
+   "device": "br-lan",
+   "updated": [
+    "addresses"
+   ],
+   "metric": 0,
+   "dns_metric": 0,
+   "delegation": true,
+   "ipv4-address": [
+    {
+     "address": "192.168.77.1",
+     "mask": 24
+    }
+   ],
+   "ipv6-address": [],
+   "ipv6-prefix": [],
+   "ipv6-prefix-assignment": [
+    {
+     "address": "fd50:b8c1:5fb2::",
+     "mask": 60,
+     "local-address": {
+      "address": "fd50:b8c1:5fb2::1",
+      "mask": 60
+     }
+    }
+   ],
+   "route": [],
+   "dns-server": [],
+   "dns-search": [],
+   "neighbors": [],
+   "inactive": {
+    "ipv4-address": [],
+    "ipv6-address": [],
+    "route": [],
+    "dns-server": [],
+    "dns-search": [],
+    "neighbors": []
+   },
+   "data": {}
+  },
+  {
+   "interface": "loopback",
+   "up": true,
+   "pending": false,
+   "available": true,
+   "autostart": true,
+   "dynamic": false,
+   "uptime": 76623,
+   "l3_device": "lo",
+   "proto": "static",
+   "device": "lo",
+   "updated": [
+    "addresses"
+   ],
+   "metric": 0,
+   "dns_metric": 0,
+   "delegation": true,
+   "ipv4-address": [
+    {
+     "address": "127.0.0.1",
+     "mask": 8
+    }
+   ],
+   "ipv6-address": [],
+   "ipv6-prefix": [],
+   "ipv6-prefix-assignment": [],
+   "route": [],
+   "dns-server": [],
+   "dns-search": [],
+   "neighbors": [],
+   "inactive": {
+    "ipv4-address": [],
+    "ipv6-address": [],
+    "route": [],
+    "dns-server": [],
+    "dns-search": [],
+    "neighbors": []
+   },
+   "data": {}
+  },
+  {
+   "interface": "wan",
+   "up": true,
+   "pending": false,
+   "available": true,
+   "autostart": true,
+   "dynamic": false,
+   "uptime": 76623,
+   "l3_device": "eth1",
+   "proto": "dhcp",
+   "device": "eth1",
+   "metric": 0,
+   "dns_metric": 0,
+   "delegation": true,
+   "ipv4-address": [
+    {
+     "address": "10.0.2.15",
+     "mask": 24
+    }
+   ],
+   "ipv6-address": [],
+   "ipv6-prefix": [],
+   "ipv6-prefix-assignment": [],
+   "route": [
+    {
+     "target": "0.0.0.0",
+     "mask": 0,
+     "nexthop": "10.0.2.2",
+     "source": "10.0.2.15/32"
+    }
+   ],
+   "dns-server": [
+    "10.0.2.3"
+   ],
+   "dns-search": [],
+   "neighbors": [],
+   "inactive": {
+    "ipv4-address": [],
+    "ipv6-address": [],
+    "route": [],
+    "dns-server": [],
+    "dns-search": [],
+    "neighbors": []
+   },
+   "data": {
+    "dhcpserver": "10.0.2.2",
+    "leasetime": 86400
+   }
+  },
+  {
+   "interface": "wan6",
+   "up": true,
+   "pending": false,
+   "available": true,
+   "autostart": true,
+   "dynamic": false,
+   "uptime": 76609,
+   "l3_device": "eth1",
+   "proto": "dhcpv6",
+   "device": "eth1",
+   "metric": 0,
+   "dns_metric": 0,
+   "delegation": true,
+   "ipv4-address": [],
+   "ipv6-address": [
+    {
+     "address": "fec0::5054:ff:fe12:3457",
+     "mask": 64,
+     "preferred": 14262,
+     "valid": 86262
+    }
+   ],
+   "ipv6-prefix": [],
+   "ipv6-prefix-assignment": [],
+   "route": [
+    {
+     "target": "fec0::",
+     "mask": 64,
+     "nexthop": "::",
+     "metric": 256,
+     "valid": 86262,
+     "source": "::/0"
+    },
+    {
+     "target": "::",
+     "mask": 0,
+     "nexthop": "fe80::2",
+     "metric": 512,
+     "valid": 1662,
+     "source": "fec0::5054:ff:fe12:3457/64"
+    }
+   ],
+   "dns-server": [
+    "fec0::3"
+   ],
+   "dns-search": [],
+   "neighbors": [],
+   "inactive": {
+    "ipv4-address": [],
+    "ipv6-address": [],
+    "route": [],
+    "dns-server": [],
+    "dns-search": [],
+    "neighbors": []
+   },
+   "data": {}
+  }
+ ],
+ "uci:network": {
+  "loopback": {
+   ".anonymous": false,
+   ".type": "interface",
+   ".name": "loopback",
+   ".index": 0,
+   "device": "lo",
+   "proto": "static",
+   "ipaddr": [
+    "127.0.0.1/8"
+   ]
+  },
+  "globals": {
+   ".anonymous": false,
+   ".type": "globals",
+   ".name": "globals",
+   ".index": 1,
+   "dhcp_default_duid": "0004fa78ca5599aa4b4aabb3ff1a66bf3b2e",
+   "ula_prefix": "fd50:b8c1:5fb2::/48"
+  },
+  "cfg030f15": {
+   ".anonymous": true,
+   ".type": "device",
+   ".name": "cfg030f15",
+   ".index": 2,
+   "name": "br-lan",
+   "type": "bridge",
+   "ports": [
+    "eth0"
+   ]
+  },
+  "lan": {
+   ".anonymous": false,
+   ".type": "interface",
+   ".name": "lan",
+   ".index": 3,
+   "device": "br-lan",
+   "proto": "static",
+   "ipaddr": "192.168.77.1/24",
+   "ip6assign": "60"
+  },
+  "wan": {
+   ".anonymous": false,
+   ".type": "interface",
+   ".name": "wan",
+   ".index": 4,
+   "device": "eth1",
+   "proto": "dhcp"
+  },
+  "wan6": {
+   ".anonymous": false,
+   ".type": "interface",
+   ".name": "wan6",
+   ".index": 5,
+   "device": "eth1",
+   "proto": "dhcpv6"
+  }
+ },
+ "uci:firewall": {
+  "cfg01e63d": {
+   ".anonymous": true,
+   ".type": "defaults",
+   ".name": "cfg01e63d",
+   ".index": 0,
+   "syn_flood": "1",
+   "input": "REJECT",
+   "output": "ACCEPT",
+   "forward": "REJECT"
+  },
+  "cfg02dc81": {
+   ".anonymous": true,
+   ".type": "zone",
+   ".name": "cfg02dc81",
+   ".index": 1,
+   "name": "lan",
+   "network": [
+    "lan"
+   ],
+   "input": "ACCEPT",
+   "output": "ACCEPT",
+   "forward": "ACCEPT"
+  },
+  "cfg03dc81": {
+   ".anonymous": true,
+   ".type": "zone",
+   ".name": "cfg03dc81",
+   ".index": 2,
+   "name": "wan",
+   "network": [
+    "wan",
+    "wan6"
+   ],
+   "input": "REJECT",
+   "output": "ACCEPT",
+   "forward": "DROP",
+   "masq": "1",
+   "mtu_fix": "1"
+  },
+  "cfg04ad58": {
+   ".anonymous": true,
+   ".type": "forwarding",
+   ".name": "cfg04ad58",
+   ".index": 3,
+   "src": "lan",
+   "dest": "wan"
+  },
+  "cfg0592bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0592bd",
+   ".index": 4,
+   "name": "Allow-DHCP-Renew",
+   "src": "wan",
+   "proto": "udp",
+   "dest_port": "68",
+   "target": "ACCEPT",
+   "family": "ipv4"
+  },
+  "cfg0692bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0692bd",
+   ".index": 5,
+   "name": "Allow-Ping",
+   "src": "wan",
+   "proto": "icmp",
+   "icmp_type": "echo-request",
+   "family": "ipv4",
+   "target": "ACCEPT"
+  },
+  "cfg0792bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0792bd",
+   ".index": 6,
+   "name": "Allow-IGMP",
+   "src": "wan",
+   "proto": "igmp",
+   "family": "ipv4",
+   "target": "ACCEPT"
+  },
+  "cfg0892bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0892bd",
+   ".index": 7,
+   "name": "Allow-DHCPv6",
+   "src": "wan",
+   "proto": "udp",
+   "dest_port": "546",
+   "family": "ipv6",
+   "target": "ACCEPT"
+  },
+  "cfg0992bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0992bd",
+   ".index": 8,
+   "name": "Allow-MLD",
+   "src": "wan",
+   "proto": "icmp",
+   "src_ip": "fe80::/10",
+   "icmp_type": [
+    "130/0",
+    "131/0",
+    "132/0",
+    "143/0"
+   ],
+   "family": "ipv6",
+   "target": "ACCEPT"
+  },
+  "cfg0a92bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0a92bd",
+   ".index": 9,
+   "name": "Allow-ICMPv6-Input",
+   "src": "wan",
+   "proto": "icmp",
+   "icmp_type": [
+    "echo-request",
+    "echo-reply",
+    "destination-unreachable",
+    "packet-too-big",
+    "time-exceeded",
+    "bad-header",
+    "unknown-header-type",
+    "router-solicitation",
+    "neighbour-solicitation",
+    "router-advertisement",
+    "neighbour-advertisement"
+   ],
+   "limit": "1000/sec",
+   "family": "ipv6",
+   "target": "ACCEPT"
+  },
+  "cfg0b92bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0b92bd",
+   ".index": 10,
+   "name": "Allow-ICMPv6-Forward",
+   "src": "wan",
+   "dest": "*",
+   "proto": "icmp",
+   "icmp_type": [
+    "echo-request",
+    "echo-reply",
+    "destination-unreachable",
+    "packet-too-big",
+    "time-exceeded",
+    "bad-header",
+    "unknown-header-type"
+   ],
+   "limit": "1000/sec",
+   "family": "ipv6",
+   "target": "ACCEPT"
+  },
+  "cfg0c92bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0c92bd",
+   ".index": 11,
+   "name": "Allow-IPSec-ESP",
+   "src": "wan",
+   "dest": "lan",
+   "proto": "esp",
+   "target": "ACCEPT"
+  },
+  "cfg0d92bd": {
+   ".anonymous": true,
+   ".type": "rule",
+   ".name": "cfg0d92bd",
+   ".index": 12,
+   "name": "Allow-ISAKMP",
+   "src": "wan",
+   "dest": "lan",
+   "dest_port": "500",
+   "proto": "udp",
+   "target": "ACCEPT"
+  }
+ },
+ "uci:dhcp": {
+  "cfg01411c": {
+   ".anonymous": true,
+   ".type": "dnsmasq",
+   ".name": "cfg01411c",
+   ".index": 0,
+   "domainneeded": "1",
+   "boguspriv": "1",
+   "filterwin2k": "0",
+   "localise_queries": "1",
+   "rebind_protection": "1",
+   "rebind_localhost": "1",
+   "local": "/lan/",
+   "domain": "lan",
+   "expandhosts": "1",
+   "nonegcache": "0",
+   "cachesize": "1000",
+   "authoritative": "1",
+   "readethers": "1",
+   "leasefile": "/tmp/dhcp.leases",
+   "resolvfile": "/tmp/resolv.conf.d/resolv.conf.auto",
+   "nonwildcard": "1",
+   "localservice": "1",
+   "ednspacket_max": "1232",
+   "filter_aaaa": "0",
+   "filter_a": "0"
+  },
+  "lan": {
+   ".anonymous": false,
+   ".type": "dhcp",
+   ".name": "lan",
+   ".index": 1,
+   "interface": "lan",
+   "start": "100",
+   "limit": "150",
+   "leasetime": "12h",
+   "dhcpv4": "server",
+   "dhcpv6": "server",
+   "ra": "server",
+   "ra_slaac": "1",
+   "ra_flags": [
+    "managed-config",
+    "other-config"
+   ]
+  },
+  "wan": {
+   ".anonymous": false,
+   ".type": "dhcp",
+   ".name": "wan",
+   ".index": 2,
+   "interface": "wan",
+   "ignore": "1"
+  },
+  "odhcpd": {
+   ".anonymous": false,
+   ".type": "odhcpd",
+   ".name": "odhcpd",
+   ".index": 3,
+   "maindhcp": "0",
+   "leasefile": "/tmp/odhcpd.leases",
+   "leasetrigger": "/usr/sbin/odhcpd-update",
+   "loglevel": "4",
+   "piodir": "/tmp/odhcpd-piodir",
+   "hostsdir": "/tmp/hosts"
+  }
+ },
+ "routes4": [
+  {
+   "dst": "default",
+   "gateway": "10.0.2.2",
+   "dev": "eth1",
+   "protocol": "static",
+   "prefsrc": "10.0.2.15",
+   "flags": []
+  },
+  {
+   "dst": "10.0.2.0/24",
+   "dev": "eth1",
+   "protocol": "kernel",
+   "scope": "link",
+   "prefsrc": "10.0.2.15",
+   "flags": []
+  },
+  {
+   "dst": "192.168.77.0/24",
+   "dev": "br-lan",
+   "protocol": "kernel",
+   "scope": "link",
+   "prefsrc": "192.168.77.1",
+   "flags": []
+  },
+  {
+   "type": "local",
+   "dst": "10.0.2.15",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "host",
+   "prefsrc": "10.0.2.15",
+   "flags": []
+  },
+  {
+   "type": "broadcast",
+   "dst": "10.0.2.255",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "link",
+   "prefsrc": "10.0.2.15",
+   "flags": []
+  },
+  {
+   "type": "local",
+   "dst": "127.0.0.0/8",
+   "dev": "lo",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "host",
+   "prefsrc": "127.0.0.1",
+   "flags": []
+  },
+  {
+   "type": "local",
+   "dst": "127.0.0.1",
+   "dev": "lo",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "host",
+   "prefsrc": "127.0.0.1",
+   "flags": []
+  },
+  {
+   "type": "broadcast",
+   "dst": "127.255.255.255",
+   "dev": "lo",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "link",
+   "prefsrc": "127.0.0.1",
+   "flags": []
+  },
+  {
+   "type": "local",
+   "dst": "192.168.77.1",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "host",
+   "prefsrc": "192.168.77.1",
+   "flags": []
+  },
+  {
+   "type": "broadcast",
+   "dst": "192.168.77.255",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "scope": "link",
+   "prefsrc": "192.168.77.1",
+   "flags": []
+  }
+ ],
+ "counters": {
+  "available": true,
+  "counters": {
+   "accept lan IPv4/IPv6 traffic": [
+    14,
+    1236
+   ],
+   "Allow-DHCP-Renew": [
+    0,
+    0
+   ],
+   "Allow-Ping": [
+    0,
+    0
+   ],
+   "Allow-IGMP": [
+    0,
+    0
+   ],
+   "Allow-DHCPv6": [
+    0,
+    0
+   ],
+   "Allow-MLD": [
+    0,
+    0
+   ],
+   "Allow-ICMPv6-Input": [
+    1,
+    120
+   ],
+   "Allow-ICMPv6-Forward": [
+    0,
+    0
+   ],
+   "Allow-IPSec-ESP": [
+    0,
+    0
+   ],
+   "Allow-ISAKMP": [
+    0,
+    0
+   ],
+   "Prevent NAT leakage": [
+    0,
+    0
+   ],
+   "accept wan IPv4/IPv6 traffic": [
+    10,
+    1184
+   ],
+   "reject wan IPv4/IPv6 traffic": [
+    0,
+    0
+   ],
+   "drop wan IPv4/IPv6 traffic": [
+    0,
+    0
+   ]
+  }
+ },
+ "conntrack": {
+  "available": true,
+  "count": 4,
+  "max": 47104,
+  "entries": [
+   {
+    "family": "ipv6",
+    "protocol": "udp",
+    "timeout": 4,
+    "packets": 1,
+    "bytes": 152,
+    "flags": [
+     "UNREPLIED"
+    ],
+    "src": "fe80:0000:0000:0000:5054:00ff:fe12:3457",
+    "dst": "ff02:0000:0000:0000:0000:0000:0001:0002",
+    "sport": "546",
+    "dport": "547"
+   },
+   {
+    "family": "ipv4",
+    "protocol": "tcp",
+    "timeout": 119,
+    "packets": 39,
+    "bytes": 8164,
+    "flags": [
+     "ASSURED"
+    ],
+    "state": "TIME_WAIT",
+    "src": "192.168.77.2",
+    "dst": "192.168.77.1",
+    "sport": "62499",
+    "dport": "22"
+   },
+   {
+    "family": "ipv4",
+    "protocol": "tcp",
+    "timeout": 7440,
+    "packets": 26,
+    "bytes": 6712,
+    "flags": [
+     "ASSURED"
+    ],
+    "state": "ESTABLISHED",
+    "src": "192.168.77.2",
+    "dst": "192.168.77.1",
+    "sport": "62500",
+    "dport": "22"
+   },
+   {
+    "family": "ipv4",
+    "protocol": "udp",
+    "timeout": 59,
+    "packets": 2,
+    "bytes": 152,
+    "flags": [],
+    "src": "10.0.2.15",
+    "dst": "198.18.12.98",
+    "sport": "49410",
+    "dport": "123"
+   }
+  ]
+ },
+ "leases": {
+  "dhcp_leases": [],
+  "dhcp6_leases": []
+ }
+}

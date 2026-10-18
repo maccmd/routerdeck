@@ -28,3 +28,26 @@ export function bytes(value) {
  while (value >= 1024 && index < units.length - 1) { value /= 1024; index++; }
  return index ? `${value.toFixed(1)} ${units[index]}` : `${Math.round(value)} B`;
 }
+
+// Link rates in bits per second, as network equipment reports them.
+export function bitrate(value) {
+ if (!Number.isFinite(value) || value < 0) return '';
+ const units = ['bps', 'kbps', 'Mbps', 'Gbps'];
+ let index = 0;
+ while (value >= 1000 && index < units.length - 1) { value /= 1000; index++; }
+ return `${index ? value.toFixed(1) : Math.round(value)} ${units[index]}`;
+}
+
+export function rate(value) {
+ return Number.isFinite(value) && value >= 0 ? String(Math.round(value)) : '';
+}
+
+export function count(value) {
+ return Number.isFinite(value) ? String(value) : '';
+}
+
+export function clock(milliseconds) {
+ if (!Number.isFinite(milliseconds)) return '';
+ const date = new Date(milliseconds);
+ return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}

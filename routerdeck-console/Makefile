@@ -12,7 +12,7 @@ define Package/routerdeck-console
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=RouterDeck Console windowed web management
-  DEPENDS:=+rpcd +rpcd-mod-ucode +ucode-mod-fs +ucode-mod-ubus +uhttpd +uhttpd-mod-ubus
+  DEPENDS:=+rpcd +rpcd-mod-ucode +rpcd-mod-luci +ucode +ucode-mod-fs +ucode-mod-ubus +ucode-mod-uci +uhttpd +uhttpd-mod-ubus +firewall4
   PKGARCH:=all
   URL:=https://github.com/maccmd/routerdeck
 endef

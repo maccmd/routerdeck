@@ -5,11 +5,18 @@ import { Menu } from './Menu.jsx';
 import { MENU, visibleMenu } from './menu.js';
 import { WorkArea } from '../mdi/WorkArea.jsx';
 import { focusWindow } from '../mdi/focus.js';
+import { Overlays } from './overlays.jsx';
+import { openWindow } from '../windows/open.js';
+import { resetSources } from '../api/sources.js';
 import { manager, routerInfo, logout } from '../state.js';
 
-function openWindow(kind) {
- focusWindow(manager.open(kind));
-}
+const ACTIONS = {
+ logout: () => { resetSources(); logout(); },
+ cascade: () => manager.cascadeAll(),
+ tile: () => manager.tileAll(),
+ 'minimize-all': () => manager.minimizeAll(),
+ 'close-all': () => manager.closeAll()
+};
 
 export function Desktop({ inert = false }) {
  useEffect(() => {
@@ -33,10 +40,10 @@ export function Desktop({ inert = false }) {
    <Toolbar />
    <div class="rd-main">
     <div class="rd-brand" aria-hidden="true"><span>RouterDeck Console</span></div>
-    <Menu items={visibleMenu(MENU, routerInfo.value?.capabilities)} onOpen={openWindow}
-     onAction={action => { if (action === 'logout') logout(); }} />
+    <Menu items={visibleMenu(MENU, routerInfo.value?.capabilities)} onOpen={openWindow} onAction={action => ACTIONS[action]?.()} />
     <WorkArea />
    </div>
+   <Overlays />
   </div>
  );
 }

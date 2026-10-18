@@ -12,6 +12,12 @@ export const MENU = [
  ] },
  { id: 'log', label: 'Log', icon: 'log', window: 'log' },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
+ { id: 'windows', label: 'Windows', icon: 'window', children: [
+  { id: 'windows-cascade', label: 'Cascade', action: 'cascade' },
+  { id: 'windows-tile', label: 'Tile', action: 'tile' },
+  { id: 'windows-minimize', label: 'Minimize All', action: 'minimize-all' },
+  { id: 'windows-close', label: 'Close All', action: 'close-all' }
+ ] },
  { separator: true },
  { id: 'luci', label: 'LuCI', icon: 'luci', href: '/cgi-bin/luci/', requires: 'luci' },
  { id: 'exit', label: 'Exit', icon: 'exit', action: 'logout' }

@@ -21,7 +21,10 @@ const PATHS = {
  restore: 'M8 8h11v11H8z M5 16V5h11',
  close: 'M6 6l12 12 M18 6 6 18',
  chevron: 'M9 6l6 6-6 6',
- window: 'M3 4h18v16H3z M3 8h18'
+ window: 'M3 4h18v16H3z M3 8h18',
+ sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4',
+ moon: 'M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z',
+ contrast: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 3v18 M12 3a9 9 0 0 1 0 18'
 };
 
 export function Icon({ name, size = 16 }) {

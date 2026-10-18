@@ -3,9 +3,19 @@
 		"description": "RouterDeck Console",
 		"read": {
 			"ubus": {
-				"routerdeck": [ "info" ],
+				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices" ],
+				"network.device": [ "status" ],
+				"network.interface": [ "dump" ],
+				"routerdeck": [ "conntrack", "fw_counters", "history", "info", "log", "routes", "terminal" ],
 				"session": [ "destroy" ],
-				"system": [ "board", "info" ]
+				"system": [ "board", "info" ],
+				"uci": [ "get" ]
+			},
+			"uci": [ "dhcp", "firewall", "network", "system", "ttyd" ]
+		},
+		"write": {
+			"ubus": {
+				"routerdeck": [ "apply", "redo", "safemode", "undo" ]
 			}
 		}
 	}

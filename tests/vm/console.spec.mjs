@@ -40,7 +40,7 @@ test('console logs in through real rpcd, opens windows and logs out', async ({ p
  await page.getByRole('menuitem', { name:'Routes', exact:true }).click();
  await expect(page.getByRole('dialog', { name:'Route List', exact:true })).toBeVisible();
  await page.getByRole('menuitem', { name:'New Terminal' }).click();
- await expect(page.getByRole('dialog', { name:'Terminal', exact:true })).toContainText(info2.capabilities.ttyd ? 'ttyd is installed' : 'Terminal needs the ttyd package');
+ await expect(page.getByRole('dialog', { name:'Terminal', exact:true })).toContainText(info2.capabilities.ttyd ? 'ttyd' : 'The terminal uses the ttyd package, which is not installed.');
  await mkdir('output/playwright/screenshots', { recursive:true });
  await page.screenshot({ animations:'disabled', path:`output/playwright/screenshots/console-vm-${port}-${info.project.name}.png` });
 

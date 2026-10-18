@@ -4,7 +4,9 @@ import { useEffect } from 'preact/hooks';
 import './styles/console.css';
 import { Login } from './shell/Login.jsx';
 import { Desktop } from './shell/Desktop.jsx';
-import { phase, expired, user, board, start } from './state.js';
+import { phase, expired, user, board, start, applyTheme } from './state.js';
+
+applyTheme();
 
 function App() {
  useEffect(() => { start(); }, []);

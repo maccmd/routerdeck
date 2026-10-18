@@ -1,0 +1,19 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Restores the Safe Mode snapshot when the console stops sending heartbeats.
+// Runs as a procd instance outside rpcd, so an rpcd restart or a failure in
+// the plugin cannot lose a pending rollback.
+'use strict';
+
+import { safe_state, safe_heartbeat, safe_restore } from 'routerdeck.core';
+
+while (true) {
+	let state = safe_state();
+	if (!state)
+		exit(0);
+	if (time() - safe_heartbeat() > (state.timeout ?? 120)) {
+		safe_restore(state, 'timed out');
+		exit(0);
+	}
+	sleep(1000);
+}

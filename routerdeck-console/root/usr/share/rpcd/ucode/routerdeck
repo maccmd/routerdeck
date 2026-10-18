@@ -1,44 +1,590 @@
 // SPDX-License-Identifier: Apache-2.0
-// RouterDeck Console backend for rpcd. Exposed as the ubus object
-// `routerdeck`; access is granted by acl.d/routerdeck-console.json.
+// RouterDeck Console backend for rpcd, exposed as the ubus object
+// `routerdeck`. Access is granted by acl.d/routerdeck-console.json.
+//
+// Every change is one `apply` call: operations are staged in a private UCI
+// delta directory, committed, validated and announced, and recorded with the
+// previous file contents so they can be undone. Safe Mode keeps a snapshot
+// that a separate watchdog restores when the client stops sending heartbeats.
+//
+// Functions are defined before their callers: ucode does not hoist them.
 'use strict';
 
-import { access } from 'fs';
+import { access, readfile, popen, open } from 'fs';
+import { cursor } from 'uci';
 import { connect } from 'ubus';
+import {
+	CONFIGS, SAFE, LAST_ROLLBACK, DELTA, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
+	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
+	luci_rollback_pending, history_load, history_save, safe_state,
+	safe_heartbeat, safe_clear, safe_restore, log_message
+} from 'routerdeck.core';
 
 const VERSION = '0.1.0';
 const API = 1;
+const NAME = /^[A-Za-z0-9_]+$/;
+const FACILITIES = [ 'kern', 'user', 'mail', 'daemon', 'auth', 'syslog', 'lpr', 'news', 'uucp', 'cron', 'authpriv', 'ftp' ];
+const SEVERITIES = [ 'emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug' ];
+const ROUTE_TYPES = [ 'local', 'broadcast', 'multicast', 'throw', 'unreachable', 'prohibit', 'blackhole', 'nat', 'anycast' ];
+const BUSY = 'LuCI is waiting to confirm applied changes. Try again after it confirms or rolls back.';
+
+function failure(code, message, extra) {
+	return { ok: false, error: code, message, ...(extra ?? {}) };
+}
 
 function executable(path) {
 	return access(path, 'x') == true;
 }
 
-function capabilities() {
-	const bus = connect();
-	const objects = bus?.list() ?? [];
-	bus?.disconnect();
+function run(command) {
+	let proc = popen(command);
+	if (!proc)
+		return { code: -1, output: '' };
+	let output = proc.read('all') ?? '';
+	return { code: proc.close(), output };
+}
 
+function user_of(request) {
+	return request.info?.acl?.user ?? 'root';
+}
+
+/* --- Kernel routes ------------------------------------------------------ */
+
+// Busybox `ip` has no JSON output; parse its text form as a fallback.
+function parse_route_line(line) {
+	let words = filter(split(trim(line), /\s+/), length);
+	if (!length(words))
+		return null;
+	let route = { flags: [] };
+	if (words[0] in ROUTE_TYPES)
+		route.type = shift(words);
+	route.dst = shift(words);
+	let names = { via: 'gateway', dev: 'dev', table: 'table', proto: 'protocol', scope: 'scope', src: 'prefsrc', metric: 'metric' };
+	while (length(words)) {
+		let word = shift(words);
+		if (names[word] && length(words))
+			route[names[word]] = word == 'metric' ? int(shift(words)) : shift(words);
+		else
+			push(route.flags, word);
+	}
+	return route;
+}
+
+function routes(family) {
+	let flag = family == 6 ? '-6' : '-4';
+	let result = run(`ip -j ${flag} route show table all 2>/dev/null`);
+	let parsed = null;
+	if (result.code == 0) {
+		try { parsed = json(result.output); } catch (e) { parsed = null; }
+	}
+	if (type(parsed) != 'array') {
+		result = run(`ip ${flag} route show table all 2>/dev/null`);
+		parsed = filter(map(split(result.output, '\n'), parse_route_line), route => route != null);
+	}
+	return parsed;
+}
+
+/* --- Firewall counters -------------------------------------------------- */
+
+// fw4 tags rules with `comment "!fw4: <name>"`; one UCI section can produce
+// several nftables rules, whose counters are summed.
+function fw_counters() {
+	if (!executable('/usr/sbin/nft'))
+		return { available: false, counters: {} };
+	let result = run('nft --terse --json list table inet fw4 2>/dev/null');
+	let parsed = null;
+	try { parsed = json(result.output); } catch (e) { parsed = null; }
+	let counters = {};
+	for (let item in parsed?.nftables ?? []) {
+		let rule = item.rule;
+		if (!rule || type(rule.comment) != 'string' || substr(rule.comment, 0, 6) != '!fw4: ')
+			continue;
+		let counter = null;
+		for (let expr in rule.expr ?? [])
+			if (expr.counter)
+				counter = expr.counter;
+		if (!counter)
+			continue;
+		let name = substr(rule.comment, 6);
+		let total = counters[name] ?? [ 0, 0 ];
+		counters[name] = [ total[0] + counter.packets, total[1] + counter.bytes ];
+	}
+	return { available: result.code == 0, counters };
+}
+
+/* --- Connection tracking ------------------------------------------------ */
+
+function parse_conntrack(line) {
+	let words = split(trim(line), /\s+/);
+	if (length(words) < 6)
+		return null;
+	let entry = { family: words[0], protocol: words[2], timeout: int(words[4]), packets: 0, bytes: 0, flags: [] };
+	let reply = false;
+	for (let i = 5; i < length(words); i++) {
+		let word = words[i];
+		let pair = match(word, /^([a-z]+)=(.*)$/);
+		if (!pair) {
+			if (substr(word, 0, 1) == '[')
+				push(entry.flags, substr(word, 1, length(word) - 2));
+			else if (i == 5)
+				entry.state = word;
+			continue;
+		}
+		let key = pair[1], value = pair[2];
+		if (key == 'src' && entry.src != null)
+			reply = true;
+		if (!reply && key in [ 'src', 'dst', 'sport', 'dport' ])
+			entry[key] = value;
+		else if (key == 'packets')
+			entry.packets += int(value);
+		else if (key == 'bytes')
+			entry.bytes += int(value);
+	}
+	return entry;
+}
+
+function conntrack(limit) {
+	let file = open('/proc/net/nf_conntrack', 'r');
+	let entries = [];
+	if (file) {
+		let line;
+		while (length(entries) < limit && (line = file.read('line')) != null && line != '') {
+			let entry = parse_conntrack(line);
+			if (entry)
+				push(entries, entry);
+		}
+		file.close();
+	}
 	return {
-		luci: access('/www/cgi-bin/luci') == true,
-		ttyd: executable('/usr/sbin/ttyd'),
-		nft: executable('/usr/sbin/nft'),
-		ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
-		log_read: index(objects, 'log') >= 0,
-		luci_rpc: index(objects, 'luci-rpc') >= 0
+		available: file != null,
+		count: int(readfile('/proc/sys/net/netfilter/nf_conntrack_count') ?? '0'),
+		max: int(readfile('/proc/sys/net/netfilter/nf_conntrack_max') ?? '0'),
+		entries
 	};
 }
+
+/* --- System log --------------------------------------------------------- */
+
+function log_entry(id, time_ms, priority, source, msg) {
+	let tag = match(msg, /^([^ :\[]+)(\[[0-9]+\])?: /);
+	let facility = priority >> 3;
+	return {
+		id, time: time_ms, source,
+		facility: FACILITIES[facility] ?? sprintf('local%d', facility - 16),
+		severity: SEVERITIES[priority & 7],
+		tag: tag?.[1],
+		message: tag ? substr(msg, length(tag[0])) : msg
+	};
+}
+
+function log_read(after, lines) {
+	let bus = connect();
+	let reply = bus?.call('log', 'read', { lines, stream: false, oneshot: true });
+	if (reply == null)
+		reply = bus?.call('log', 'read', { lines, stream: false });
+	bus?.disconnect();
+	if (type(reply?.log) == 'array') {
+		let entries = [];
+		for (let item in reply.log)
+			if (item.id > after)
+				push(entries, log_entry(item.id, item.time, item.priority, item.source == 0 ? 'kernel' : 'syslog', item.msg));
+		return { mode: 'ubus', entries };
+	}
+	// Without logd's ubus API: the whole tail, without stable ids.
+	let result = run(sprintf('logread -l %d 2>/dev/null', lines));
+	let entries = [], id = 0;
+	for (let line in split(result.output, '\n')) {
+		let parts = match(line, /^(\S+ \S+ +\S+ \S+ \S+) ([a-z0-9]+)\.([a-z]+) (.*)$/);
+		if (!parts)
+			continue;
+		let entry = log_entry(++id, null, 0, 'syslog', parts[4]);
+		entry.time_text = parts[1];
+		entry.facility = parts[2];
+		entry.severity = parts[3];
+		push(entries, entry);
+	}
+	return { mode: 'logread', entries };
+}
+
+/* --- Terminal ----------------------------------------------------------- */
+
+function terminal() {
+	let ctx = cursor();
+	let section = null;
+	ctx.load('ttyd');
+	ctx.foreach('ttyd', 'ttyd', s => { section ??= s; });
+	let bus = connect();
+	let services = bus?.call('service', 'list', { name: 'ttyd' }) ?? {};
+	bus?.disconnect();
+	let running = false;
+	for (let name, instance in services?.ttyd?.instances ?? {})
+		running ||= !!instance.running;
+	return {
+		installed: executable('/usr/sbin/ttyd'),
+		running,
+		port: int(section?.port ?? '7681'),
+		ssl: section?.ssl == '1',
+		interface: section?.interface,
+		url_override: section?.url_override
+	};
+}
+
+/* --- Safe Mode helpers -------------------------------------------------- */
+
+function watchdog(action) {
+	system([ '/etc/init.d/routerdeck-safemode', action ]);
+}
+
+function write_heartbeat() {
+	write_json(SAFE + '/heartbeat', time());
+}
+
+function release_safe(restore) {
+	let state = safe_state();
+	if (!state)
+		return [];
+	watchdog('stop');
+	if (restore)
+		return safe_restore(state, 'exited without keeping changes');
+	history_save(map(history_load(), entry => ({ ...entry, safemode: false })));
+	safe_clear();
+	log_message('Safe Mode released; changes kept');
+	return [];
+}
+
+/* --- Changes, history and undo ------------------------------------------ */
+
+// fw4 skips invalid sections with a warning and still exits 0, so problems
+// are found by comparing its warnings before and after a change. Section
+// indices are removed because inserting a rule shifts them.
+function fw_problems() {
+	let result = run('fw4 check 2>&1');
+	let problems = [];
+	for (let line in split(result.output, '\n'))
+		if (substr(line, 0, 3) == '[!]' && match(line, /invalid|skipped|unknown/))
+			push(problems, line);
+	return { code: result.code, problems, output: trim(result.output) };
+}
+
+function new_problems(before, after) {
+	let known = map(before.problems, line => replace(line, /@[a-z_]+\[[0-9]+\]/g, '@'));
+	return filter(after.problems, line => !(replace(line, /@[a-z_]+\[[0-9]+\]/g, '@') in known));
+}
+
+function valid_value(value) {
+	if (type(value) == 'string')
+		return length(value) <= 4096 && index(value, '\n') < 0;
+	if (type(value) != 'array' || length(value) > 256)
+		return false;
+	for (let item in value)
+		if (type(item) != 'string' || length(item) > 4096 || index(item, '\n') >= 0)
+			return false;
+	return true;
+}
+
+// Operations: add {config,type,name?,ref?,values}, set {config,section,values},
+// unset {config,section,options}, delete {config,section},
+// order {config,sections}. A `$ref` names a section added earlier.
+function stage(ctx, ops) {
+	let created = {}, touched = [];
+	let section_of = name => type(name) == 'string' && substr(name, 0, 1) == '$' ? created[name] : name;
+	let exists = (config, name) => type(name) == 'string' && match(name, NAME) && ctx.get(config, name) != null;
+	for (let op in ops) {
+		let config = op?.config;
+		if (!(config in CONFIGS))
+			return failure('invalid', sprintf('Configuration %s cannot be changed here', config));
+		if (!(config in touched)) {
+			ctx.load(config);
+			push(touched, config);
+		}
+		let values = op.values ?? {};
+		if (type(values) != 'object')
+			return failure('invalid', 'Values must be an object');
+		for (let key, value in values)
+			if (!match(key, NAME) || !(value == null || valid_value(value)))
+				return failure('invalid', sprintf('Invalid value for %s', key));
+
+		let section;
+		if (op.op == 'add') {
+			if (type(op.type) != 'string' || !match(op.type, NAME))
+				return failure('invalid', 'Invalid section type');
+			if (op.name != null) {
+				if (type(op.name) != 'string' || !match(op.name, NAME) || ctx.get(config, op.name) != null)
+					return failure('exists', sprintf('%s already exists', op.name));
+				ctx.set(config, op.name, op.type);
+				section = op.name;
+			}
+			else
+				section = ctx.add(config, op.type);
+			if (op.ref != null)
+				created[op.ref] = section;
+		}
+		else if (op.op in [ 'set', 'unset', 'delete' ]) {
+			section = section_of(op.section);
+			if (!exists(config, section))
+				return failure('missing', sprintf('%s %s no longer exists', config, op.section));
+			if (op.op == 'delete') {
+				ctx.delete(config, section);
+				continue;
+			}
+			if (op.op == 'unset') {
+				for (let option in op.options ?? [])
+					if (type(option) == 'string' && match(option, NAME))
+						ctx.delete(config, section, option);
+				continue;
+			}
+		}
+		else if (op.op == 'order') {
+			let position = 0;
+			for (let name in op.sections ?? []) {
+				let target = section_of(name);
+				if (!exists(config, target))
+					return failure('missing', sprintf('%s %s no longer exists', config, name));
+				ctx.reorder(config, target, position++);
+			}
+			continue;
+		}
+		else
+			return failure('invalid', sprintf('Unknown operation %s', op?.op));
+
+		for (let key, value in values) {
+			if (value == null || value == '' || type(value) == 'array' && !length(value))
+				ctx.delete(config, section, key);
+			else
+				ctx.set(config, section, key, value);
+		}
+	}
+	return { ok: true, touched, created };
+}
+
+function apply(request) {
+	let args = request.args;
+	if (type(args.ops) != 'array' || !length(args.ops) || length(args.ops) > 200)
+		return failure('invalid', 'No changes were sent');
+	if (luci_rollback_pending())
+		return failure('busy', BUSY);
+	ensure_dirs();
+	let ctx = cursor(null, DELTA);
+	let before = {};
+	for (let name in CONFIGS)
+		before[name] = config_text(name);
+
+	let firewall_before = null;
+	for (let op in args.ops)
+		if (op?.config == 'firewall')
+			firewall_before ??= fw_problems();
+
+	let staged = stage(ctx, args.ops);
+	if (!staged.ok) {
+		for (let name in CONFIGS)
+			ctx.revert(name);
+		return staged;
+	}
+	let changed = [];
+	for (let name in staged.touched) {
+		if (!ctx.commit(name)) {
+			for (let restore in staged.touched)
+				write_config(restore, before[restore]);
+			return failure('commit', sprintf('Could not save %s', name));
+		}
+		if (config_text(name) != before[name])
+			push(changed, name);
+	}
+	if (!length(changed))
+		return { ok: true, changed: [], created: staged.created };
+
+	if ('firewall' in changed) {
+		let check = fw_problems();
+		let problems = check.code == 0 ? new_problems(firewall_before, check) : [ check.output ];
+		if (length(problems)) {
+			for (let name in changed)
+				write_config(name, before[name]);
+			return failure('rejected', 'The firewall rejected this change', { details: join('\n', problems) });
+		}
+	}
+	announce(changed);
+
+	let safe = safe_state();
+	// A new change discards the redo branch, as in any undo history.
+	let entries = filter(history_load(), entry => !entry.undone);
+	let entry = {
+		id: int(read_json(HISTORY_ID, 0)) + 1, time: time(), user: user_of(request),
+		description: type(args.description) == 'string' ? substr(args.description, 0, 200) : 'Change configuration',
+		configs: changed, before: {}, after: {}, safemode: safe != null
+	};
+	for (let name in changed) {
+		entry.before[name] = before[name];
+		entry.after[name] = config_text(name);
+	}
+	push(entries, entry);
+	history_save(entries);
+	write_json(HISTORY_ID, entry.id);
+
+	let released = false;
+	if (safe) {
+		safe.count = (safe.count ?? 0) + 1;
+		if (safe.count > SAFE_LIMIT) {
+			// Like RouterOS: past the limit Safe Mode ends and keeps the changes.
+			release_safe(false);
+			released = true;
+		}
+		else
+			write_json(SAFE + '/state.json', safe);
+	}
+	return { ok: true, id: entry.id, changed, created: staged.created, safemode_released: released };
+}
+
+function history_summary() {
+	let entries = history_load();
+	let undo = null, redo = null;
+	for (let entry in entries) {
+		if (!entry.undone)
+			undo = entry;
+		else if (!redo)
+			redo = entry;
+	}
+	let summary = entry => entry ? { id: entry.id, description: entry.description, time: entry.time, user: entry.user } : null;
+	return {
+		undo: summary(undo), redo: summary(redo),
+		entries: map(entries, entry => ({ ...summary(entry), configs: entry.configs, undone: !!entry.undone, safemode: !!entry.safemode }))
+	};
+}
+
+function undo_redo(direction) {
+	if (luci_rollback_pending())
+		return failure('busy', BUSY);
+	let entries = history_load();
+	let target = null;
+	for (let entry in entries) {
+		if (direction == 'undo' && !entry.undone)
+			target = entry;
+		else if (direction == 'redo' && entry.undone && !target)
+			target = entry;
+	}
+	if (!target)
+		return failure('empty', direction == 'undo' ? 'Nothing to undo' : 'Nothing to redo');
+	let expected = direction == 'undo' ? target.after : target.before;
+	let wanted = direction == 'undo' ? target.before : target.after;
+	for (let name in target.configs)
+		if (config_text(name) != expected[name])
+			return failure('conflict', sprintf('%s was changed outside this history, so %s is not possible', name, direction));
+	for (let name in target.configs)
+		write_config(name, wanted[name]);
+	announce(target.configs);
+	target.undone = direction == 'undo';
+	history_save(entries);
+	return { ok: true, id: target.id, description: target.description, configs: target.configs };
+}
+
+/* --- Safe Mode ---------------------------------------------------------- */
+
+function safemode(request) {
+	let args = request.args, sid = args.ubus_rpc_session;
+	let state = safe_state();
+	let mine = state != null && state.sid == sid;
+	let status = extra => {
+		let current = safe_state();
+		return {
+			ok: true,
+			active: current != null,
+			mine: current != null && current.sid == sid,
+			owner: current?.user,
+			count: current?.count ?? 0,
+			limit: SAFE_LIMIT,
+			timeout: current?.timeout ?? SAFE_TIMEOUT,
+			last_rollback: read_json(LAST_ROLLBACK, null),
+			...(extra ?? {})
+		};
+	};
+	if (args.action == 'status')
+		return status();
+	if (args.action == 'ping') {
+		if (mine)
+			write_heartbeat();
+		return status();
+	}
+	if (args.action == 'enter') {
+		if (state && !mine && time() - safe_heartbeat() <= state.timeout)
+			return failure('taken', sprintf('Safe Mode is used by %s', state.user ?? 'another session'), { owner: state.user });
+		if (state && !mine)
+			release_safe(true);
+		if (!mine) {
+			ensure_dirs();
+			for (let name in CONFIGS)
+				write_text(SAFE + '/snapshot/' + name, config_text(name));
+			let timeout = args.timeout >= 10 && args.timeout <= 600 ? args.timeout : SAFE_TIMEOUT;
+			write_json(SAFE + '/state.json', { sid, user: user_of(request), since: time(), timeout, count: 0, configs: CONFIGS });
+		}
+		write_heartbeat();
+		watchdog('start');
+		return status();
+	}
+	if (args.action == 'exit') {
+		if (state && !mine)
+			return failure('taken', sprintf('Safe Mode belongs to %s', state.user ?? 'another session'), { owner: state.user });
+		return status({ restored: release_safe(args.keep === false) });
+	}
+	return failure('invalid', 'Unknown Safe Mode action');
+}
+
+/* --- ubus object -------------------------------------------------------- */
 
 return {
 	routerdeck: {
 		info: {
 			call: function(request) {
+				let bus = connect();
+				let objects = bus?.list() ?? [];
+				bus?.disconnect();
 				return {
 					version: VERSION,
 					api: API,
-					user: request.info?.acl?.user,
-					capabilities: capabilities()
+					user: user_of(request),
+					capabilities: {
+						luci: access('/www/cgi-bin/luci') == true,
+						ttyd: executable('/usr/sbin/ttyd'),
+						nft: executable('/usr/sbin/nft'),
+						ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
+						log_read: 'log' in objects,
+						luci_rpc: 'luci-rpc' in objects
+					}
 				};
 			}
+		},
+		routes: {
+			args: { family: 4 },
+			call: request => ({ routes: routes(request.args.family == 6 ? 6 : 4) })
+		},
+		fw_counters: {
+			call: () => fw_counters()
+		},
+		conntrack: {
+			args: { limit: 4 },
+			call: request => conntrack(request.args.limit > 0 && request.args.limit <= 8192 ? request.args.limit : 2048)
+		},
+		log: {
+			args: { after: 4, lines: 4 },
+			call: request => log_read(request.args.after ?? 0, request.args.lines > 0 && request.args.lines <= 1000 ? request.args.lines : 1000)
+		},
+		terminal: {
+			call: () => terminal()
+		},
+		history: {
+			call: () => history_summary()
+		},
+		apply: {
+			args: { description: 'description', ops: [] },
+			call: request => apply(request)
+		},
+		undo: {
+			call: () => undo_redo('undo')
+		},
+		redo: {
+			call: () => undo_redo('redo')
+		},
+		safemode: {
+			args: { action: 'action', keep: true, timeout: 4 },
+			call: request => safemode(request)
 		}
 	}
 };

@@ -8,8 +8,22 @@ import { createWindowManager } from './mdi/manager.js';
 import { WINDOW_KINDS } from './windows/kinds.js';
 
 const webStorage = name => { try { return globalThis[name] ?? null; } catch { return null; } };
-const local = createStorage(webStorage('localStorage'));
-const perTab = createStorage(webStorage('sessionStorage'));
+// Per-browser preferences (layout, columns, theme) and per-tab session data.
+export const preferences = createStorage(webStorage('localStorage'));
+export const perTab = createStorage(webStorage('sessionStorage'));
+
+export const theme = signal(['light', 'dark'].includes(preferences.get('theme')) ? preferences.get('theme') : 'system');
+export function applyTheme() {
+ const root = globalThis.document?.documentElement;
+ if (!root) return;
+ if (theme.value === 'system') delete root.dataset.theme;
+ else root.dataset.theme = theme.value;
+}
+export function setTheme(value) {
+ theme.value = value;
+ preferences.set('theme', value);
+ applyTheme();
+}
 
 export const phase = signal('starting'); // starting | login | desktop
 export const expired = signal(false);
@@ -26,7 +40,7 @@ export const client = createClient({
  }
 });
 
-export const manager = createWindowManager({ kinds: WINDOW_KINDS, storage: local });
+export const manager = createWindowManager({ kinds: WINDOW_KINDS, storage: preferences });
 export const windows = signal(manager.list());
 manager.subscribe(list => { windows.value = list; });
 

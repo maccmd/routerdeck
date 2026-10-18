@@ -46,7 +46,7 @@ test('login rejects a wrong password, then opens the desktop', async ({ page }) 
  await expect(page.getByRole('toolbar', { name: 'Session' })).toContainText('(simulated)');
  await expect(page.locator('.rd-infofields dd').first()).toHaveText(/^\d+d \d{2}:\d{2}:\d{2}$/);
  await expect(page).toHaveTitle(/^root@127\.0\.0\.1 \(routerdeck-preview\) - RouterDeck Console \d+\.\d+\.\d+ on Simulated router \(armsr\/armv8\)$/);
- await expect(page.getByRole('button', { name: 'Safe Mode' })).toBeDisabled();
+ await expect(page.getByRole('button', { name: 'Safe Mode' })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('menu opens cascaded windows without moving the open ones', async ({ page }, info) => {
@@ -63,7 +63,7 @@ test('menu opens cascaded windows without moving the open ones', async ({ page }
  const addresses = await rect(win(page, 'Address List'));
  expect([addresses.x - first.x, addresses.y - first.y]).toEqual([24, 24]);
  await expect(win(page, 'Firewall').getByRole('tab')).toHaveText(['Filter Rules', 'NAT', 'Connections', 'Zones']);
- await expect(win(page, 'Log').getByRole('status')).toHaveText('0 items');
+ await expect(win(page, 'Log').getByRole('status').first()).toHaveText(/^\d+ items/);
  // A single-instance window is brought to the front, not opened twice.
  await page.getByRole('menuitem', { name: 'Interfaces' }).click();
  await expect(page.getByRole('dialog', { name: 'Interface List' })).toHaveCount(1);
@@ -121,7 +121,7 @@ test('keyboard opens submenus and cycles windows', async ({ page }) => {
  await expect(win(page, 'Route List')).toHaveClass(/is-active/);
  await page.keyboard.press('Alt+KeyT');
  await expect(win(page, 'Terminal')).toBeVisible();
- await expect(win(page, 'Terminal')).toContainText('Terminal needs the ttyd package');
+ await expect(win(page, 'Terminal')).toContainText('The terminal uses the ttyd package, which is not installed.');
 });
 
 test('reload keeps the session and workspace; Exit returns to login', async ({ page }) => {
