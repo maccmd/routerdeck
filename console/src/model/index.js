@@ -13,5 +13,6 @@ import { dnsSettings, dnsStatic } from './dns.js';
 import { wifiInterfaces, wifiRadios, wifiRegistration } from './wireless.js';
 import { pppClients } from './ppp.js';
 import { quickSet } from './quickset.js';
+import { systemIdentity } from './system.js';
 
-export const MODELS = Object.fromEntries([interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, quickSet, log].map(model => [model.id, model]));
+export const MODELS = Object.fromEntries([interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, quickSet, systemIdentity, log].map(model => [model.id, model]));

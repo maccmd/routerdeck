@@ -74,10 +74,13 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
  const readOnly = model.readOnly || row?.readOnly;
  const changedOnRouter = [...dirty].some(key => key in baseAtEdit && !same(baseAtEdit[key], base[key]));
 
+ // Updates are functional: two inputs before the next render (a fast
+ // typist, a test) must not overwrite each other.
  function edit(id, value) {
-  if (!(id in baseAtEdit)) setBaseAtEdit({ ...baseAtEdit, [id]: base[id] });
-  setEdits({ ...edits, [id]: value });
-  if (errors[id]) setErrors({ ...errors, [id]: null });
+  const was = base[id];
+  setBaseAtEdit(current => id in current ? current : { ...current, [id]: was });
+  setEdits(current => ({ ...current, [id]: value }));
+  setErrors(current => current[id] ? { ...current, [id]: null } : current);
  }
 
  async function run(change, after) {

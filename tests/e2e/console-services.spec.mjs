@@ -106,7 +106,7 @@ test('PPP clients list PPPoE networks and create new ones', async ({ page }) => 
  await expect(ppp.locator('.rd-grid-comment')).toHaveText(';;; Backup line');
  await ppp.getByRole('button', { name: 'Add', exact: true }).click();
  const item = win(page, 'New PPP Client');
- await item.getByLabel('Name:').fill('isp');
+ await item.getByLabel('Name:', { exact: true }).fill('isp');
  await item.getByLabel('User:').fill('me@isp.example');
  await item.getByRole('button', { name: 'OK' }).click();
  await expect(item.getByText('PPPoE needs the Ethernet device it dials on')).toBeVisible();

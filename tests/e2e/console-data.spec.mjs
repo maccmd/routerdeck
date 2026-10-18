@@ -258,6 +258,6 @@ test('windows menu, column chooser, theme and terminal', async ({ page }) => {
  await page.reload();
  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
- await page.getByRole('menuitem', { name: 'New Terminal' }).click();
- await expect(win(page, 'Terminal')).toContainText('apk add ttyd');
+ await page.getByRole('menuitem', { name: 'New Shell' }).click();
+ await expect(win(page, 'Shell')).toContainText('apk add ttyd');
 });

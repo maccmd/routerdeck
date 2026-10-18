@@ -66,6 +66,8 @@ export const SOURCES = {
  log: [log, 1000],
  terminal: [() => client.call('routerdeck', 'terminal'), 5000],
  history: [() => client.call('routerdeck', 'history'), 5000],
+ sysinfo: [() => client.call('system', 'info'), 5000],
+ board: [() => client.call('system', 'board'), 60000],
  safemode: [() => client.call('routerdeck', 'safemode', { action: 'status' }), 5000]
 };
 

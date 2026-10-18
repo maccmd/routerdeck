@@ -11,6 +11,7 @@ const PATHS = {
  bridge: 'M2 9h20 M5 9v9 M19 9v9 M9 9v5 M15 9v5 M2 18h20 M5 9c2-4 12-4 14 0',
  log: 'M4 2h11l5 5v15H4z M15 2v5h5 M8 11h8 M8 15h8 M8 19h5',
  tools: 'M14.5 4.5a4.5 4.5 0 0 0-5.8 5.8L3 16l5 5 5.7-5.7a4.5 4.5 0 0 0 5.8-5.8l-2.8 2.8-3-1-1-3z',
+ shell: 'M4 17l6-5-6-5 M12 19h8',
  terminal: 'M3 4h18v16H3z M6 8l4 4-4 4 M13 16h5',
  luci: 'M4 3h16a1 1 0 0 1 1 1v12H3V4a1 1 0 0 1 1-1Z M8 21h8 M12 16v5',
  exit: 'M10 3H3v18h7 M14 7l6 5-6 5 M8 12h12',

@@ -26,6 +26,7 @@ export const MENU = [
   { id: 'tool-torch', label: 'Torch', window: 'tool-torch' }
  ] },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
+ { id: 'shell', label: 'New Shell', icon: 'shell', window: 'shell' },
  { id: 'windows', label: 'Windows', icon: 'window', children: [
   { id: 'windows-cascade', label: 'Cascade', action: 'cascade' },
   { id: 'windows-tile', label: 'Tile', action: 'tile' },

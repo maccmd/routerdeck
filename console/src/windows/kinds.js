@@ -21,6 +21,8 @@ export const WINDOW_KINDS = {
  'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
  'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },
  'tool-torch': { title: 'Torch', size: { w: 980, h: 480 }, multi: true, body: 'torch' },
- terminal: { title: 'Terminal', size: { w: 720, h: 440 }, multi: true, body: 'terminal' },
+ // New Terminal is the RouterOS-style command line; New Shell is ash via ttyd.
+ terminal: { title: 'Terminal', size: { w: 760, h: 440 }, multi: true, body: 'cli' },
+ shell: { title: 'Shell', size: { w: 720, h: 440 }, multi: true, body: 'shell' },
  item: { title: 'Object', size: { w: 480, h: 320 }, multi: true, body: 'item' }
 };

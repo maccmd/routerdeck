@@ -214,6 +214,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-safe.is-other { border-color: var(--rd-amber); color: var(--rd-amber); }
 .rd-safe.is-on { border-color: var(--rd-amber); background: var(--rd-safe-bg); color: var(--rd-text); box-shadow: inset 0 1px 2px var(--rd-shadow); font-weight: 600; }
 
+/* Command line: a terminal in both themes. */
+.rd-cli { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; padding: 6px 8px; background: #101214; color: #d7dbe0; font-family: var(--rd-mono); font-size: 12px; line-height: 16px; cursor: text; }
+.rd-cli-text { min-height: 16px; white-space: pre; }
+.rd-cli-text.is-error { color: #ff8c82; }
+.rd-cli-text.is-muted { color: #8b949e; }
+.rd-cli-text.is-echo { color: #ffffff; }
+.rd-cli-input { display: flex; white-space: pre; }
+.rd-cli-input.is-busy { height: 0; overflow: hidden; }
+.rd-cli-prompt { flex: none; color: #8fd18f; }
+.rd-cli-input input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; caret-color: #d7dbe0; }
 .rd-terminal-note { flex: 1; padding: 10px 12px; overflow: auto; background: #101214; color: #d7dbe0; font-family: var(--rd-mono); }
 .rd-terminal-note p { margin: 0 0 8px; }
 .rd-terminal-note code { color: #8fd18f; }

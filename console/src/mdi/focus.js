@@ -7,7 +7,10 @@ const nextFrame = callback => requestAnimationFrame(() => requestAnimationFrame(
 export function focusWindow(id) {
  nextFrame(() => {
   const node = [...document.querySelectorAll('[data-window-id]')].find(element => element.dataset.windowId === id);
-  node?.querySelector('.rd-win-label')?.focus({ preventScroll: true });
+  // Someone already working inside the window keeps their place.
+  if (node?.contains(document.activeElement) && document.activeElement !== node) return;
+  // A window may name the control that should get focus, like a command line.
+  (node?.querySelector('[data-autofocus]') ?? node?.querySelector('.rd-win-label'))?.focus({ preventScroll: true });
  });
 }
 

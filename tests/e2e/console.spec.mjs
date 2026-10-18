@@ -123,9 +123,10 @@ test('keyboard opens submenus and cycles windows', async ({ page }) => {
  await page.getByRole('menuitem', { name: 'Interfaces' }).click();
  await page.keyboard.press('F6');
  await expect(win(page, 'Route List')).toHaveClass(/is-active/);
+ // Alt+T opens the command line with the cursor in it.
  await page.keyboard.press('Alt+KeyT');
  await expect(win(page, 'Terminal')).toBeVisible();
- await expect(win(page, 'Terminal')).toContainText('The terminal uses the ttyd package, which is not installed.');
+ await expect(win(page, 'Terminal').getByRole('textbox', { name: 'Command' })).toBeFocused();
 });
 
 test('reload keeps the session and workspace; Exit returns to login', async ({ page }) => {

@@ -59,7 +59,7 @@ test('a PPPoE client is created as a netifd interface and removed', async ({ pag
  const ppp = win(page, 'PPP');
  await ppp.getByRole('button', { name: 'Add', exact: true }).click();
  const item = win(page, 'New PPP Client');
- await item.getByLabel('Name:').fill('rdppp');
+ await item.getByLabel('Name:', { exact: true }).fill('rdppp');
  await item.getByLabel('Device:').selectOption('eth1');
  await item.getByLabel('User:').fill('test@example.invalid');
  await item.getByLabel('Password:').fill('not-a-secret');
