@@ -3,15 +3,17 @@
 		"description": "RouterDeck Console",
 		"read": {
 			"ubus": {
+				"iwinfo": [ "assoclist", "devices", "info" ],
 				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices" ],
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
-				"routerdeck": [ "conntrack", "fw_counters", "history", "info", "log", "routes", "terminal" ],
+				"network.wireless": [ "status" ],
+				"routerdeck": [ "conntrack", "fw_counters", "history", "info", "log", "ping", "routes", "terminal", "traceroute" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
 			},
-			"uci": [ "dhcp", "firewall", "network", "system", "ttyd" ]
+			"uci": [ "dhcp", "firewall", "network", "system", "ttyd", "wireless" ]
 		},
 		"write": {
 			"ubus": {

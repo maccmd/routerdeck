@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// An object window: tabbed fields on the left, OK / Cancel / Apply /
-// Disable / Comment / Copy / Remove on the right, a status bar below.
-// Fields the user has not touched keep following live router data.
+// An object form: tabbed fields on the left, OK / Cancel / Apply / Disable /
+// Comment / Copy / Remove on the right, a status bar below. Fields the user
+// has not touched keep following live router data. It fills object windows
+// and the settings tabs of windows such as IP > DNS.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { MODELS } from '../model/index.js';
 import { ValidationError } from '../model/common.js';
@@ -15,14 +16,13 @@ import { Field } from './fields.jsx';
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-export function ItemWindow({ win, active }) {
- const params = win.params ?? {};
- const model = MODELS[params.model];
+// `singleton` forms edit the model's only row (settings) instead of `rowKey`.
+export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, singleton = false, onClose, onCreated, onTitle }) {
  const sources = useSources(model?.sources ?? [], active && !!model);
  const ready = !!model && model.sources.every(key => sources.data[key] !== undefined);
  const rows = useMemo(() => ready ? model.rows(sources.data) : [], [ready, ...(model?.sources ?? []).map(key => sources.data[key])]);
- const row = params.key ? rows.find(item => item.key === params.key) ?? null : null;
- const creating = !params.key;
+ const row = singleton ? rows[0] ?? null : rowKey ? rows.find(item => item.key === rowKey) ?? null : null;
+ const creating = !singleton && !rowKey;
  const [initial, setInitial] = useState(null);
  const [edits, setEdits] = useState({});
  const [baseAtEdit, setBaseAtEdit] = useState({});
@@ -31,7 +31,6 @@ export function ItemWindow({ win, active }) {
  const [busy, setBusy] = useState(false);
  const [tab, setTab] = useState(0);
  const created = useRef(null);
- const close = () => { manager.close(win.id); focusAfterClose(); };
 
  // A new object's defaults are taken once, when its data first arrives.
  useEffect(() => {
@@ -40,22 +39,19 @@ export function ItemWindow({ win, active }) {
   setInitial(source ? (model.copy ? model.copy(model.values(source, sources.data)) : model.values(source, sources.data)) : model.defaults(sources.data, params));
  }, [ready]);
 
- // After Apply on a new object the window becomes that object's window.
+ // After Apply on a new object the form becomes that object's form.
  useEffect(() => {
   if (!created.current || !ready) return;
   const { result, values } = created.current;
   const found = rows.find(item => item.key === result.created?.$new || item.section === result.created?.$new) ?? (model.findCreated?.(rows, values));
   if (!found) return;
   created.current = null;
-  manager.update(win.id, { params: { model: params.model, key: found.key }, instance: `${params.model}:${found.key}`, title: model.itemTitle(found) });
+  onCreated?.(found);
   setEdits({});
  }, [rows]);
 
  useEffect(() => {
-  if (row && model) {
-   const title = model.itemTitle(row);
-   if (title !== win.title) manager.update(win.id, { title });
-  }
+  if (row && model) onTitle?.(model.itemTitle(row));
  }, [row && model?.itemTitle(row)]);
 
  if (!model) return <div class="rd-item-missing">Unknown object type.</div>;
@@ -63,8 +59,8 @@ export function ItemWindow({ win, active }) {
  if (!creating && !row) {
   return (
    <div class="rd-item-missing">
-    <p>This {model.noun.toLowerCase()} no longer exists on the router.</p>
-    <button type="button" class="rd-button" onClick={close}>Close</button>
+    <p>{singleton ? `${model.noun} is not available on this router.` : `This ${model.noun.toLowerCase()} no longer exists on the router.`}</p>
+    <button type="button" class="rd-button" onClick={onClose}>Close</button>
    </div>
   );
  }
@@ -72,7 +68,7 @@ export function ItemWindow({ win, active }) {
  const base = creating ? initial ?? {} : model.values(row, sources.data);
  const values = { ...base, ...edits };
  const dirty = new Set(Object.keys(edits).filter(key => !same(edits[key], base[key])));
- const fields = model.fields(sources.data, row, params).map(field => ({ ...field, key: win.id.replace(/\W/g, '') })).filter(field => field.visible?.(values) ?? true);
+ const fields = model.fields(sources.data, row, params).map(field => ({ ...field, key: idPrefix })).filter(field => field.visible?.(values) ?? true);
  const tabs = [...new Set(fields.map(field => field.tab ?? 'General'))];
  const current = tabs[Math.min(tab, tabs.length - 1)];
  const readOnly = model.readOnly || row?.readOnly;
@@ -98,7 +94,7 @@ export function ItemWindow({ win, active }) {
  }
 
  async function save(closeAfter) {
-  if (readOnly || (!creating && !dirty.size)) return closeAfter ? close() : undefined;
+  if (readOnly || (!creating && !dirty.size)) return closeAfter ? onClose() : undefined;
   let change;
   try {
    change = model.save(values, row, sources.data, { dirty, ...params });
@@ -109,12 +105,12 @@ export function ItemWindow({ win, active }) {
    if (index >= 0) setTab(index);
    return;
   }
-  if (!change) return closeAfter ? close() : setEdits({});
+  if (!change) return closeAfter ? onClose() : setEdits({});
   const first = change.ops.find(op => op.op === 'add');
   if (creating && first && !first.ref) first.ref = '$new';
   await run(change, result => {
    setErrors({});
-   if (closeAfter) return close();
+   if (closeAfter) return onClose();
    if (creating) created.current = { result, values };
    else { setEdits({}); setBaseAtEdit({}); }
   });
@@ -140,14 +136,14 @@ export function ItemWindow({ win, active }) {
     <div class="rd-item-fields" role={tabs.length > 1 ? 'tabpanel' : undefined}>
      {fields.filter(field => (field.tab ?? 'General') === current).map(field => (
       <Field key={field.id} field={field} value={values[field.id]} values={values} error={errors[field.id]}
-       disabled={readOnly || busy} onChange={value => edit(field.id, value)} />
+       disabled={readOnly || busy || field.readOnly} onChange={value => edit(field.id, value)} />
      ))}
     </div>
     {message && <div class="rd-item-error" role="alert">{message}</div>}
    </div>
    <div class="rd-item-buttons">
     <button type="submit" class="rd-button" disabled={busy}>OK</button>
-    <button type="button" class="rd-button" onClick={close}>Cancel</button>
+    <button type="button" class="rd-button" onClick={onClose}>Cancel</button>
     {!readOnly && <button type="button" class="rd-button" disabled={busy || (!creating && !dirty.size)} onClick={() => save(false)}>Apply</button>}
     {row && model.toggle && !readOnly && (
      <button type="button" class="rd-button" disabled={busy || !model.canToggle?.(row)} title={model.canToggle?.(row) ? undefined : model.toggleHint}
@@ -157,10 +153,10 @@ export function ItemWindow({ win, active }) {
     {row && model.copy && !readOnly && <button type="button" class="rd-button" onClick={() => openItem(model.id, null, { copyFrom: row.key })}>Copy</button>}
     {row && model.remove && !readOnly && (
      <button type="button" class="rd-button" disabled={busy || !model.canRemove?.(row)}
-      onClick={() => { const blocked = model.removeBlocked?.([row], sources.data); blocked ? setMessage(blocked) : run(model.remove([row], sources.data), close); }}>Remove</button>
+      onClick={() => { const blocked = model.removeBlocked?.([row], sources.data); blocked ? setMessage(blocked) : run(model.remove([row], sources.data), onClose); }}>Remove</button>
     )}
     {row && (model.tools ?? []).filter(tool => tool.enabled([row])).map(tool => (
-     <button type="button" key={tool.id} class="rd-button" disabled={busy} onClick={() => run(tool.run([row], sources.data), close)}>{tool.label}</button>
+     <button type="button" key={tool.id} class="rd-button" disabled={busy} onClick={() => run(tool.run([row], sources.data), singleton ? null : onClose)}>{tool.label}</button>
     ))}
    </div>
    <div class="rd-statusbar rd-item-status" role="status">
@@ -168,5 +164,16 @@ export function ItemWindow({ win, active }) {
     {dirty.size > 0 && <span class="rd-status-note">{changedOnRouter ? 'changed on the router since you started editing' : 'not applied'}</span>}
    </div>
   </form>
+ );
+}
+
+export function ItemWindow({ win, active }) {
+ const params = win.params ?? {};
+ const model = MODELS[params.model];
+ return (
+  <ItemForm model={model} rowKey={params.key} params={params} active={active} idPrefix={win.id.replace(/\W/g, '')}
+   onClose={() => { manager.close(win.id); focusAfterClose(); }}
+   onCreated={found => manager.update(win.id, { params: { model: params.model, key: found.key }, instance: `${params.model}:${found.key}`, title: model.itemTitle(found) })}
+   onTitle={title => { if (title !== win.title) manager.update(win.id, { title }); }} />
  );
 }

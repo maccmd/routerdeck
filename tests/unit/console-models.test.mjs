@@ -250,3 +250,35 @@ test('bridges, ports and VLANs', async () => {
  assert.deepEqual(removed.ops.map(op => [op.section, op.values.ports]), [['cfg030f15', []], ['v10', []], ['v20', []]]);
  assert.deepEqual(MODELS.bridges.remove(MODELS.bridges.rows(input), input).ops.map(op => op.section), ['cfg030f15', 'v10', 'v20']);
 });
+
+test('DNS settings and static entries', () => {
+ const input = data();
+ const [row] = MODELS['dns-settings'].rows(input);
+ const values = MODELS['dns-settings'].values(row, input);
+ assert.deepEqual([values.server, values.remote, values.domain, values.rebind_protection], [[], false, 'lan', true]);
+ assert.equal(MODELS['dns-settings'].save(values, row, input, { dirty: new Set() }), null);
+ const change = MODELS['dns-settings'].save({ ...values, server: ['9.9.9.9', '2620:fe::fe#53', '/corp.example/10.1.1.1'], remote: true, domain: 'home.arpa' }, row, input, { dirty: new Set(['server', 'remote', 'domain']) });
+ assert.deepEqual(change.ops[0].values, { server: ['9.9.9.9', '2620:fe::fe#53', '/corp.example/10.1.1.1'], localservice: '0', domain: 'home.arpa', local: '/home.arpa/' });
+ rejects(() => MODELS['dns-settings'].save({ ...values, server: ['dns.google'] }, row, input, { dirty: new Set(['server']) }), 'server');
+
+ input['uci:dhcp'].d1 = { '.type': 'domain', '.name': 'd1', '.index': 20, '.anonymous': false, name: 'nas.lan', ip: '192.168.77.10' };
+ input['uci:dhcp'].c1 = { '.type': 'cname', '.name': 'c1', '.index': 21, '.anonymous': false, cname: 'files.lan', target: 'nas.lan' };
+ assert.deepEqual(MODELS['dns-static'].rows(input).map(item => [item.cells.name, item.cells.type, item.cells.address]), [['nas.lan', 'A', '192.168.77.10'], ['files.lan', 'CNAME', 'nas.lan']]);
+ assert.deepEqual(MODELS['dns-static'].save({ type: 'AAAA', name: 'nas.lan', address: 'FD00::10', target: '' }, null, input).ops[0], { op: 'add', config: 'dhcp', type: 'domain', values: { name: 'nas.lan', ip: 'fd00::10' } });
+ assert.deepEqual(MODELS['dns-static'].save({ type: 'CNAME', name: 'media.lan', address: '', target: 'nas.lan' }, null, input).ops[0].type, 'cname');
+ rejects(() => MODELS['dns-static'].save({ type: 'A', name: 'bad name', address: '10.0.0.1', target: '' }, null, input), 'name');
+ rejects(() => MODELS['dns-static'].save({ type: 'A', name: 'x.lan', address: 'fd00::1', target: '' }, null, input), 'address');
+});
+
+test('DHCPv6 bindings and making them static', () => {
+ const input = data();
+ input.leases.dhcp6_leases = [{ expires: 600, hostname: 'laptop', duid: '00010001AABB', iaid: 1, ip6addr: 'fd50:b8c1:5fb2::5c1', ip6addrs: ['fd50:b8c1:5fb2::5c1/128'] }];
+ input['uci:dhcp'].h6 = { '.type': 'host', '.name': 'h6', '.index': 20, '.anonymous': false, name: 'nas', duid: '00010001ccdd', hostid: '10' };
+ const rows = MODELS['dhcp6-bindings'].rows(input);
+ assert.deepEqual(rows.map(row => [row.cells.address, row.flags, row.cells.status, row.cells.hostname]), [['::10', '', 'waiting', 'nas'], ['fd50:b8c1:5fb2::5c1/128', 'D', 'bound', 'laptop']]);
+ assert.deepEqual(MODELS['dhcp-leases'].rows(input).map(row => row.key), [], 'DUID-only hosts are not IPv4 leases');
+ const tool = MODELS['dhcp6-bindings'].tools[0];
+ assert.deepEqual(tool.run([rows[1]], input).ops[0].values, { name: 'laptop', duid: '00010001AABB', hostid: '5c1' });
+ rejects(() => MODELS['dhcp6-bindings'].save({ duid: 'xyz', hostid: '', hostname: '', leasetime: '' }, null, input), 'duid');
+ rejects(() => MODELS['dhcp6-bindings'].save({ duid: '00010001CCDD', hostid: '', hostname: '', leasetime: '' }, null, input), 'duid');
+});

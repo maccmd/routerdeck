@@ -13,7 +13,7 @@ export const SAFE = RUN + '/safemode';
 export const LAST_ROLLBACK = RUN + '/last-rollback.json';
 export const DELTA = RUN + '/uci';
 // Configurations the console edits and Safe Mode protects.
-export const CONFIGS = [ 'network', 'firewall', 'dhcp' ];
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;

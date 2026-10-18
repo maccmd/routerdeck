@@ -9,7 +9,9 @@ import { useSources } from '../api/sources.js';
 import { apply, errorText } from '../api/actions.js';
 import { openItem } from '../windows/open.js';
 import { openContextMenu, askText } from '../shell/overlays.jsx';
-import { preferences } from '../state.js';
+import { preferences, manager } from '../state.js';
+import { ItemForm } from '../item/ItemWindow.jsx';
+import { focusAfterClose } from '../mdi/focus.js';
 
 function compare(column, a, b) {
  const key = column.sort ?? (value => value);
@@ -186,7 +188,7 @@ function TabList({ model, active, kind }) {
  );
 }
 
-export function ListWindow({ spec, kind, active }) {
+export function ListWindow({ spec, kind, win, active }) {
  const [tab, setTab] = useState(() => Math.min(preferences.get('tab.' + kind, 0), spec.tabs.length - 1));
  const choose = index => { setTab(index); preferences.set('tab.' + kind, index); };
  return (
@@ -205,7 +207,11 @@ export function ListWindow({ spec, kind, active }) {
      ))}
     </div>
    )}
-   <TabList key={spec.tabs[tab].model} model={MODELS[spec.tabs[tab].model]} active={active} kind={kind} />
+   {MODELS[spec.tabs[tab].model].singleton
+    // Settings tabs (IP > DNS) are a form, as in RouterOS.
+    ? <ItemForm key={spec.tabs[tab].model} model={MODELS[spec.tabs[tab].model]} singleton active={active} idPrefix={win.id.replace(/\W/g, '')}
+       onClose={() => { manager.close(win.id); focusAfterClose(); }} />
+    : <TabList key={spec.tabs[tab].model} model={MODELS[spec.tabs[tab].model]} active={active} kind={kind} />}
   </div>
  );
 }

@@ -57,10 +57,35 @@ function SafeMode({ state }) {
   }
  }
 
+ // Like RouterOS: Safe Mode held by another session (for example this
+ // console before it moved to a new address) can be taken over or undone.
+ async function takeover(undoChanges) {
+  try {
+   await safemode('takeover');
+   perTab.set('safemode-since', Date.now());
+   if (undoChanges) await discard();
+   else notify(`Safe Mode taken over from ${state.owner}; its ${state.count} change${state.count === 1 ? '' : 's'} stay protected`);
+  } catch (error) {
+   notify(errorText(error), 'error');
+  }
+ }
+
+ if (taken) {
+  return (
+   <>
+    <button type="button" class="rd-tbtn rd-safe is-other" onClick={() => takeover(false)}
+     title={`Safe Mode is held by ${state.owner} in another session (last heartbeat ${state.heartbeat_age ?? '?'} s ago, ${state.count} change${state.count === 1 ? '' : 's'}). Take it over to keep those changes protected.`}>
+     Take over Safe Mode
+    </button>
+    <button type="button" class="rd-tbtn" onClick={() => takeover(true)} title="Take Safe Mode over and undo the changes made in it">Undo its changes</button>
+   </>
+  );
+ }
+
  return (
   <>
-   <button type="button" class={`rd-tbtn rd-safe${mine ? ' is-on' : ''}`} aria-pressed={mine ? 'true' : 'false'} disabled={!state || taken} onClick={toggle}
-    title={taken ? `Safe Mode is used by ${state.owner}` : mine ? `Safe Mode: ${state.count} of ${state.limit} changes. Click to keep them and leave Safe Mode.` : 'Undo changes automatically if this console loses the router'}>
+   <button type="button" class={`rd-tbtn rd-safe${mine ? ' is-on' : ''}`} aria-pressed={mine ? 'true' : 'false'} disabled={!state} onClick={toggle}
+    title={mine ? `Safe Mode: ${state.count} of ${state.limit} changes. Click to keep them and leave Safe Mode.` : 'Undo changes automatically if this console loses the router'}>
     Safe Mode
    </button>
    {mine && <button type="button" class="rd-tbtn" onClick={discard} title="Leave Safe Mode and undo its changes">Undo Safe Mode changes</button>}

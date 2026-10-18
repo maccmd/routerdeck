@@ -201,6 +201,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-notice { flex: 1; min-width: 0; margin: 0 10px; overflow: hidden; text-overflow: ellipsis; color: var(--rd-muted); }
 .rd-notice.tone-warning { color: var(--rd-amber); }
 .rd-notice.tone-error { color: var(--rd-red); }
+.rd-safe.is-other { border-color: var(--rd-amber); color: var(--rd-amber); }
 .rd-safe.is-on { border-color: var(--rd-amber); background: var(--rd-safe-bg); color: var(--rd-text); box-shadow: inset 0 1px 2px var(--rd-shadow); font-weight: 600; }
 
 .rd-terminal-note { flex: 1; padding: 10px 12px; overflow: auto; background: #101214; color: #d7dbe0; font-family: var(--rd-mono); }

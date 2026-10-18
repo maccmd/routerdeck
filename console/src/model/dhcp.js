@@ -3,7 +3,7 @@
 // `host` sections; an active lease without one is dynamic and can be made
 // static. A lease shows an address was handed out, not that a client is online.
 import { sections, truthy, list, invalid, networkOptions, compact } from './common.js';
-import { parseCidr, isIPv4, isMac, addressKey, formatIPv4, parseIPv4 } from '../lib/ip.js';
+import { parseCidr, isIPv4, isMac, addressKey, formatIPv4, parseIPv4, parseIPv6 } from '../lib/ip.js';
 import { uptime } from '../lib/format.js';
 
 const LEASE_TIME = /^(\d+[smhdw]?|infinite)$/;
@@ -93,7 +93,7 @@ export const leases = {
 
  rows(data) {
   const active = (data.leases?.dhcp_leases ?? []).map(lease => ({ ...lease, used: false }));
-  const rows = sections(data['uci:dhcp'], 'host').map(host => {
+  const rows = sections(data['uci:dhcp'], 'host').filter(host => host.ip || host.mac).map(host => {
    const macs = list(host.mac).map(normalizeMac);
    const lease = active.find(item => !item.used && (macs.includes(normalizeMac(item.macaddr)) || host.ip && item.ipaddr === host.ip));
    if (lease) lease.used = true;
@@ -158,4 +158,91 @@ export const leases = {
  remove: rows => ({ description: `Remove static lease ${rows.map(row => row.cells.address).join(', ')}`, ops: rows.map(row => ({ op: 'delete', config: 'dhcp', section: row.section })) }),
  toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} static lease ${rows.map(row => row.cells.address).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { enable: enable ? null : '0' } })) }),
  comment: (rows, comment) => ({ description: `Comment static lease ${rows.map(row => row.cells.address).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { comment: comment || null } })) })
+};
+
+// DHCPv6 bindings (odhcpd): active leases and `host` sections with a DUID.
+// A static binding fixes the address suffix (`hostid`); the prefix comes
+// from the network.
+const hostidOf = address => {
+ const value = parseIPv6(String(address ?? '').split('/')[0]);
+ return value === null ? '' : (value & 0xffffffffffffffffn).toString(16);
+};
+
+export const bindings6 = {
+ id: 'dhcp6-bindings',
+ noun: 'DHCPv6 Binding',
+ sources: ['leases', 'uci:dhcp'],
+ columns: [
+  { id: 'flags', label: '', width: 26 },
+  { id: 'address', label: 'Address', width: 230, sort: addressKey },
+  { id: 'duid', label: 'DUID', width: 220 },
+  { id: 'iaid', label: 'IAID', width: 70, hidden: true },
+  { id: 'expires', label: 'Expires After', width: 96, sort: (value, row) => row.expires ?? -1 },
+  { id: 'status', label: 'Status', width: 64 },
+  { id: 'hostname', label: 'Host Name', width: 140 }
+ ],
+ flagLegend: { X: 'disabled', D: 'dynamic' },
+ defaultSort: 'address',
+ rows(data) {
+  const active = (data.leases?.dhcp6_leases ?? []).map(lease => ({ ...lease, used: false }));
+  const rows = sections(data['uci:dhcp'], 'host').filter(host => host.duid).map(host => {
+   const lease = active.find(item => !item.used && String(item.duid).toLowerCase() === String(host.duid).toLowerCase());
+   if (lease) lease.used = true;
+   const disabled = !truthy(host.enable, true);
+   return {
+    key: host['.name'], section: host['.name'], disabled, comment: host.comment, expires: lease?.expires, flags: disabled ? 'X' : '',
+    cells: { address: lease ? (lease.ip6addrs ?? [lease.ip6addr]).join(' ') : host.hostid ? `::${host.hostid}` : '', duid: host.duid, iaid: lease?.iaid != null ? String(lease.iaid) : '', expires: lease ? uptime(lease.expires) : '', status: lease ? 'bound' : 'waiting', hostname: host.name ?? '' }
+   };
+  });
+  for (const lease of active.filter(item => !item.used)) {
+   rows.push({
+    key: `lease6:${lease.duid}:${lease.iaid}`, dynamic: true, lease, expires: lease.expires, flags: 'D',
+    cells: { address: (lease.ip6addrs ?? [lease.ip6addr]).filter(Boolean).join(' '), duid: lease.duid ?? '', iaid: lease.iaid != null ? String(lease.iaid) : '', expires: uptime(lease.expires), status: 'bound', hostname: lease.hostname ?? '' }
+   });
+  }
+  return rows;
+ },
+ itemTitle: row => `DHCPv6 Binding <${row?.cells.hostname || row?.cells.duid || 'new'}>`,
+ itemStatus: row => [row.disabled ? 'disabled' : null, row.dynamic ? 'dynamic' : 'static', row.cells?.status],
+ canAdd: () => true,
+ canRemove: row => !row.dynamic,
+ canToggle: row => !row.dynamic,
+ canComment: row => !row.dynamic,
+ tools: [{
+  id: 'make-static6', label: 'Make Static', enabled: rows => rows.length > 0 && rows.every(row => row.dynamic && row.lease?.duid),
+  run: rows => ({
+   description: `Make DHCPv6 binding static ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`,
+   ops: rows.map(row => ({ op: 'add', config: 'dhcp', type: 'host', values: compact({ name: HOSTNAME.test(row.lease.hostname ?? '') ? row.lease.hostname : '', duid: row.lease.duid, hostid: hostidOf(row.lease.ip6addrs?.[0] ?? row.lease.ip6addr) }) }))
+  })
+ }],
+ fields: (data, row) => row?.dynamic
+  ? ['address', 'duid', 'iaid', 'expires', 'status', 'hostname'].map(id => ({ id, label: bindings6.columns.find(column => column.id === id).label, type: 'static' }))
+  : [
+   { id: 'duid', label: 'DUID', type: 'text', required: true, placeholder: '000100012a3b4c5d525400aa1002' },
+   { id: 'hostid', label: 'Address Suffix', type: 'text', placeholder: 'hex, e.g. 10' },
+   { id: 'hostname', label: 'Host Name', type: 'text' },
+   { id: 'leasetime', label: 'Lease Time', type: 'text', placeholder: 'server default' },
+   { id: 'status', label: 'Status', type: 'static' }
+  ],
+ values(row, data) {
+  if (row.dynamic) return { ...row.cells };
+  const host = sections(data['uci:dhcp'], 'host').find(item => item['.name'] === row.section) ?? {};
+  return { duid: host.duid ?? '', hostid: host.hostid ?? '', hostname: host.name ?? '', leasetime: host.leasetime ?? '', status: row.cells.status };
+ },
+ defaults: () => ({ duid: '', hostid: '', hostname: '', leasetime: '', status: '' }),
+ save(values, row, data) {
+  if (!/^[0-9a-f]{4,260}$/i.test(values.duid)) invalid('duid', 'A DUID is hexadecimal, for example 000100012a3b4c5d525400aa1002');
+  if (values.hostid && !/^[0-9a-f]{1,16}$/i.test(values.hostid)) invalid('hostid', 'The suffix is up to 16 hexadecimal digits');
+  if (values.hostname && !HOSTNAME.test(values.hostname)) invalid('hostname', 'Use letters, digits and dashes');
+  if (values.leasetime && !LEASE_TIME.test(values.leasetime)) invalid('leasetime', 'Use 12h, 30m, 2d or infinite');
+  const clash = sections(data['uci:dhcp'], 'host').find(host => host['.name'] !== row?.section && String(host.duid ?? '').toLowerCase() === values.duid.toLowerCase());
+  if (clash) invalid('duid', `Already reserved by ${clash.name || clash['.name']}`);
+  const options = compact({ duid: values.duid.toLowerCase(), hostid: values.hostid.toLowerCase(), name: values.hostname, leasetime: values.leasetime });
+  return row
+   ? { description: `Change DHCPv6 binding ${values.hostname || values.duid}`, ops: [{ op: 'set', config: 'dhcp', section: row.section, values: options }] }
+   : { description: `Add DHCPv6 binding ${values.hostname || values.duid}`, ops: [{ op: 'add', config: 'dhcp', type: 'host', values: options }] };
+ },
+ remove: rows => ({ description: `Remove DHCPv6 binding ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`, ops: rows.map(row => ({ op: 'delete', config: 'dhcp', section: row.section })) }),
+ toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} DHCPv6 binding ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { enable: enable ? null : '0' } })) }),
+ comment: (rows, comment) => ({ description: `Comment DHCPv6 binding ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { comment: comment || null } })) })
 };

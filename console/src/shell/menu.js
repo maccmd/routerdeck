@@ -9,7 +9,8 @@ export const MENU = [
   { id: 'ip-addresses', label: 'Addresses', window: 'ip-addresses' },
   { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
-  { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' }
+  { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' },
+  { id: 'ip-dns', label: 'DNS', window: 'ip-dns' }
  ] },
  { id: 'ipv6', label: 'IPv6', icon: 'ipv6', children: [
   { id: 'ipv6-addresses', label: 'Addresses', window: 'ipv6-addresses' },

@@ -64,7 +64,7 @@ test('invalid input is rejected and leaves the configuration unchanged', async (
  const rejected = await rpc(sid, 'routerdeck', 'apply', { description: 'Bad rule', ops: [{ op: 'add', config: 'firewall', type: 'rule', values: { name: 'RD-Bad', src: 'wan', dest_port: 'notaport', target: 'ACCEPT' } }] });
  expect(rejected).toMatchObject({ ok: false, error: 'rejected' });
  expect(rejected.details).toContain("invalid value 'notaport'");
- expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'system', section: 'x', values: { hostname: 'y' } }] })).toMatchObject({ ok: false, error: 'invalid' });
+ expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'rpcd', section: 'x', values: { timeout: '1' } }] })).toMatchObject({ ok: false, error: 'invalid' });
  expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'network', section: 'missing_section', values: { proto: 'none' } }] })).toMatchObject({ ok: false, error: 'missing' });
  expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'network', section: 'lan', values: { 'bad-key': 'x' } }] })).toMatchObject({ ok: false, error: 'invalid' });
  expect(ssh('sha256sum /etc/config/firewall /etc/config/network /etc/config/dhcp')).toBe(before);
@@ -117,4 +117,29 @@ test('the watchdog rolls back when heartbeats stop', async () => {
  expect(status).toMatchObject({ active: false, last_rollback: { reason: 'timed out', configs: ['firewall'], user: 'root' } });
  expect(ssh('logread -e routerdeck | tail -n 1')).toContain('Safe Mode timed out: restored firewall');
  await expect.poll(() => ssh('nft list chain inet fw4 input_wan'), { timeout: 15000 }).not.toContain(name);
+});
+
+test('another session can take Safe Mode over and keep its changes protected', async () => {
+ const name = 'RD-Takeover-' + Date.now();
+ const before = ssh('sha256sum /etc/config/firewall');
+ await rpc(sid, 'routerdeck', 'safemode', { action: 'enter' });
+ await rpc(sid, 'routerdeck', 'apply', { description: 'Add rule ' + name, ops: [addRule(name)] });
+ const other = await login();
+ expect(await rpc(other, 'routerdeck', 'safemode', { action: 'status' })).toMatchObject({ active: true, mine: false, owner: 'root', count: 1 });
+ expect(await rpc(other, 'routerdeck', 'safemode', { action: 'takeover' })).toMatchObject({ active: true, mine: true, count: 1 });
+ expect(await rpc(sid, 'routerdeck', 'safemode', { action: 'status' })).toMatchObject({ active: true, mine: false });
+ // The new owner undoes the first session's change.
+ expect(await rpc(other, 'routerdeck', 'safemode', { action: 'exit', keep: false })).toMatchObject({ active: false, restored: ['firewall'] });
+ expect(ssh('sha256sum /etc/config/firewall')).toBe(before);
+ expect(ssh('logread -e routerdeck | grep -c "taken over"')).not.toBe('0');
+});
+
+test('ping and traceroute accept only plain hosts and report replies', async () => {
+ expect(await rpc(sid, 'routerdeck', 'ping', { host: '127.0.0.1' })).toMatchObject({ ok: true, replied: true, host: '127.0.0.1', ttl: 64 });
+ expect(await rpc(sid, 'routerdeck', 'ping', { host: '::1', family: 6, size: 100 })).toMatchObject({ ok: true, replied: true, size: 108 });
+ expect(await rpc(sid, 'routerdeck', 'ping', { host: '127.0.0.1; reboot' })).toMatchObject({ ok: false, error: 'invalid' });
+ expect(await rpc(sid, 'routerdeck', 'ping', { host: '-f' })).toMatchObject({ ok: false, error: 'invalid' });
+ expect(await rpc(sid, 'routerdeck', 'ping', { host: 'no-such-host.invalid' })).toMatchObject({ ok: false, error: 'resolve' });
+ const trace = await rpc(sid, 'routerdeck', 'traceroute', { host: '127.0.0.1', max: 3 });
+ expect(trace.hops[0]).toMatchObject({ hop: 1, address: '127.0.0.1' });
 });

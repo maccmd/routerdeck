@@ -23,7 +23,9 @@ function initialConfigs() {
  network.cfg1792bd = section('bridge-vlan', 'cfg1792bd', 24, { device: 'br-iot', vlan: '20', ports: ['eth3:t'], comment: 'Cameras' }, true);
  firewall.cfg1192bd = section('redirect', 'cfg1192bd', 20, { name: 'Web server', target: 'DNAT', src: 'wan', dest: 'lan', proto: 'tcp', src_dport: '8080', dest_ip: '192.168.88.10', dest_port: '80' }, true);
  firewall.cfg1292bd = section('rule', 'cfg1292bd', 21, { name: 'Block-Telnet', src: 'lan', dest: 'wan', proto: 'tcp', dest_port: '23', target: 'REJECT', enabled: '0' }, true);
- dhcp.cfg1392bd = section('host', 'cfg1392bd', 20, { name: 'nas', mac: '52:54:00:aa:10:01', ip: '192.168.88.10', dns: '1' }, true);
+ dhcp.cfg1392bd = section('host', 'cfg1392bd', 20, { name: 'nas', mac: '52:54:00:aa:10:01', ip: '192.168.88.10', dns: '1', duid: '000100012a3b4c5d525400aa1001', hostid: '10' }, true);
+ dhcp.cfg1892bd = section('domain', 'cfg1892bd', 21, { name: 'printer.lan', ip: '192.168.88.122' }, true);
+ dhcp.cfg1992bd = section('cname', 'cfg1992bd', 22, { cname: 'files.lan', target: 'nas.lan', comment: 'Shared folders' }, true);
  return { network, firewall, dhcp };
 }
 
@@ -151,9 +153,16 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  }
 
  function safemode({ action, keep, timeout }, sid, user) {
-  const status = extra => ({ ok: true, active: !!safe, mine: !!safe && safe.sid === sid, owner: safe?.user, count: safe?.count ?? 0, limit: 100, timeout: safe?.timeout ?? safeTimeout, last_rollback: lastRollback, ...extra });
+  const status = extra => ({ ok: true, active: !!safe, mine: !!safe && safe.sid === sid, owner: safe?.user, count: safe?.count ?? 0, limit: 100, timeout: safe?.timeout ?? safeTimeout, heartbeat_age: safe ? Math.floor((now() - safe.heartbeat) / 1000) : null, last_rollback: lastRollback, ...extra });
   if (action === 'status') return status();
   if (action === 'ping') { if (safe?.sid === sid) safe.heartbeat = now(); return status(); }
+  if (action === 'takeover') {
+   if (!safe) return { ok: false, error: 'empty', message: 'Safe Mode is not active' };
+   safe.sid = sid; safe.user = user; safe.heartbeat = now();
+   return status();
+  }
+  // Test-only: another session (another tab) holds Safe Mode.
+  if (action === '__other') { if (!safe) safe = { sid: 'other', user: 'root', count: 0, timeout: safeTimeout, snapshot: clone(configs) }; safe.sid = 'other'; safe.heartbeat = now(); return status(); }
   // Test-only: behave as if heartbeats stopped and the timeout passed.
   if (action === '__expire') { if (safe) restoreSafe('timed out'); return status(); }
   if (action === 'enter') {
@@ -248,6 +257,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
     live['ipv4-address'] = [{ address: '203.0.113.42', mask: 24 }];
     live.route = [{ target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1', source: '203.0.113.42/32' }];
     live.data = { dhcpserver: '203.0.113.1', leasetime: 86400 };
+    live['dns-server'] = ['203.0.113.1'];
    }
    return live;
   });
@@ -335,7 +345,13 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
 
  function leases() {
   const t = Math.floor(seconds());
-  return { dhcp_leases: CLIENTS.map((client, index) => ({ ...client, expires: Math.max(1, 43200 - index * 3600 - t) })), dhcp6_leases: [] };
+  return {
+   dhcp_leases: CLIENTS.map((client, index) => ({ ...client, expires: Math.max(1, 43200 - index * 3600 - t) })),
+   dhcp6_leases: [
+    { expires: Math.max(1, 3600 - t), hostname: 'nas', duid: '000100012a3b4c5d525400aa1001', iaid: 1, ip6addr: 'fd50:b8c1:5fb2::10', ip6addrs: ['fd50:b8c1:5fb2::10/128'] },
+    { expires: Math.max(1, 3000 - t), hostname: 'laptop', duid: '000100012a3b4c5d525400aa1002', iaid: 1, ip6addr: 'fd50:b8c1:5fb2::5c1', ip6addrs: ['fd50:b8c1:5fb2::5c1/128'] }
+   ]
+  };
  }
 
  function history_() {

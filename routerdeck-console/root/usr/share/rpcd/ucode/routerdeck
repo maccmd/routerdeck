@@ -10,11 +10,11 @@
 // Functions are defined before their callers: ucode does not hoist them.
 'use strict';
 
-import { access, readfile, popen, open } from 'fs';
+import { access, readfile, unlink, open } from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import {
-	CONFIGS, SAFE, LAST_ROLLBACK, DELTA, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
+	CONFIGS, RUN, SAFE, LAST_ROLLBACK, DELTA, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
 	safe_heartbeat, safe_clear, safe_restore, log_message
@@ -38,12 +38,16 @@ function executable(path) {
 	return access(path, 'x') == true;
 }
 
+// Inside rpcd, reading a popen() pipe returns only what has arrived so far,
+// so commands write to a file and are waited for with system().
+let run_serial = 0;
 function run(command) {
-	let proc = popen(command);
-	if (!proc)
-		return { code: -1, output: '' };
-	let output = proc.read('all') ?? '';
-	return { code: proc.close(), output };
+	ensure_dirs();
+	let path = sprintf('%s/run.%d.%d', RUN, time(), ++run_serial);
+	let code = system([ '/bin/sh', '-c', command + ' >' + path + ' 2>&1' ]);
+	let output = readfile(path) ?? '';
+	unlink(path);
+	return { code, output };
 }
 
 // The ttyd package installs /usr/bin/ttyd; accept /usr/sbin for custom builds.
@@ -125,7 +129,7 @@ function parse_conntrack(line) {
 	let words = split(trim(line), /\s+/);
 	if (length(words) < 6)
 		return null;
-	let entry = { family: words[0], protocol: words[2], timeout: int(words[4]), packets: 0, bytes: 0, flags: [] };
+	let entry = { family: words[0], protocol: words[2], timeout: int(words[4]), packets: 0, bytes: 0, tx_packets: 0, tx_bytes: 0, rx_packets: 0, rx_bytes: 0, flags: [] };
 	let reply = false;
 	for (let i = 5; i < length(words); i++) {
 		let word = words[i];
@@ -142,10 +146,14 @@ function parse_conntrack(line) {
 			reply = true;
 		if (!reply && key in [ 'src', 'dst', 'sport', 'dport' ])
 			entry[key] = value;
-		else if (key == 'packets')
+		else if (key == 'packets') {
 			entry.packets += int(value);
-		else if (key == 'bytes')
+			entry[reply ? 'rx_packets' : 'tx_packets'] += int(value);
+		}
+		else if (key == 'bytes') {
 			entry.bytes += int(value);
+			entry[reply ? 'rx_bytes' : 'tx_bytes'] += int(value);
+		}
 	}
 	return entry;
 }
@@ -211,6 +219,50 @@ function log_read(after, lines) {
 		push(entries, entry);
 	}
 	return { mode: 'logread', entries };
+}
+
+/* --- Diagnostics ------------------------------------------------------- */
+
+// Arguments reach a shell, so only plain host names and addresses pass.
+// No leading '-', so a host can never be read as an option.
+const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
+
+function family_flag(family) {
+	return family == 6 ? '-6' : family == 4 ? '-4' : '';
+}
+
+// One echo request per call; the client repeats it to show replies live.
+function ping(args) {
+	if (type(args.host) != 'string' || !match(args.host, HOST))
+		return failure('invalid', 'Enter an address or host name');
+	// ucode treats a missing argument as 0 in comparisons; check the type first.
+	// Below 16 data bytes busybox ping cannot measure the round-trip time.
+	let size = type(args.size) == 'int' && args.size >= 16 && args.size <= 65500 ? args.size : 56;
+	let result = run(sprintf('ping %s -c 1 -W 1 -s %d %s 2>&1', family_flag(args.family), size, args.host));
+	let reply = match(result.output, /([0-9]+) bytes from (.+): seq=[0-9]+ ttl=([0-9]+) time=([0-9.]+) ms/);
+	if (reply)
+		return { ok: true, replied: true, host: reply[2], size: int(reply[1]), ttl: int(reply[3]), time: +reply[4] };
+	let target = match(result.output, /^PING [^ ]+ \(([^)]+)\)/);
+	if (!target)
+		return failure('resolve', trim(result.output) || 'Host not found');
+	return { ok: true, replied: false, host: target[1] };
+}
+
+function traceroute(args) {
+	if (type(args.host) != 'string' || !match(args.host, HOST))
+		return failure('invalid', 'Enter an address or host name');
+	let command = args.family == 6 ? 'traceroute6' : 'traceroute';
+	let hops = args.max >= 1 && args.max <= 30 ? args.max : 20;
+	let result = run(sprintf('%s -n -w 1 -q 1 -m %d %s 2>&1', command, hops, args.host));
+	let list = [];
+	for (let line in split(result.output, '\n')) {
+		let hop = match(line, /^ *([0-9]+) +([^ ]+)( +([0-9.]+) ms)?/);
+		if (hop)
+			push(list, { hop: int(hop[1]), address: hop[2] == '*' ? null : hop[2], time: hop[4] != null ? +hop[4] : null });
+	}
+	if (!length(list))
+		return failure('resolve', trim(result.output) || 'Traceroute failed');
+	return { ok: true, hops: list };
 }
 
 /* --- Terminal ----------------------------------------------------------- */
@@ -499,6 +551,7 @@ function safemode(request) {
 			count: current?.count ?? 0,
 			limit: SAFE_LIMIT,
 			timeout: current?.timeout ?? SAFE_TIMEOUT,
+			heartbeat_age: current ? time() - safe_heartbeat() : null,
 			last_rollback: read_json(LAST_ROLLBACK, null),
 			...(extra ?? {})
 		};
@@ -529,6 +582,21 @@ function safemode(request) {
 				safe_clear();
 			return failure('watchdog', 'The Safe Mode watchdog could not be started, so Safe Mode is off');
 		}
+		return status();
+	}
+	// Like RouterOS: another session may take Safe Mode over and keep its
+	// changes protected, e.g. after a change moved the console to a new address.
+	if (args.action == 'takeover') {
+		if (!state)
+			return failure('empty', 'Safe Mode is not active');
+		if (!mine) {
+			log_message(sprintf('Safe Mode taken over by %s from %s', user_of(request), state.user ?? 'another session'));
+			state.previous_user = state.user;
+			state.sid = sid;
+			state.user = user_of(request);
+			write_json(SAFE + '/state.json', state);
+		}
+		write_heartbeat();
 		return status();
 	}
 	if (args.action == 'exit') {
@@ -580,6 +648,14 @@ return {
 		},
 		terminal: {
 			call: () => terminal()
+		},
+		ping: {
+			args: { host: 'host', family: 4, size: 4 },
+			call: request => ping(request.args)
+		},
+		traceroute: {
+			args: { host: 'host', family: 4, max: 4 },
+			call: request => traceroute(request.args)
 		},
 		history: {
 			call: () => history_summary()

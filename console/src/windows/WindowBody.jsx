@@ -10,5 +10,5 @@ export function WindowBody({ win }) {
  const active = !win.minimized;
  if (spec.body === 'terminal') return <TerminalWindow active={active} />;
  if (spec.body === 'item') return <ItemWindow win={win} active={active} />;
- return <ListWindow spec={spec} kind={win.kind} active={active} />;
+ return <ListWindow spec={spec} kind={win.kind} win={win} active={active} />;
 }
