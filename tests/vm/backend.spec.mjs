@@ -134,12 +134,47 @@ test('another session can take Safe Mode over and keep its changes protected', a
  expect(ssh('logread -e routerdeck | grep -c "taken over"')).not.toBe('0');
 });
 
-test('ping and traceroute accept only plain hosts and report replies', async () => {
- expect(await rpc(sid, 'routerdeck', 'ping', { host: '127.0.0.1' })).toMatchObject({ ok: true, replied: true, host: '127.0.0.1', ttl: 64 });
- expect(await rpc(sid, 'routerdeck', 'ping', { host: '::1', family: 6, size: 100 })).toMatchObject({ ok: true, replied: true, size: 108 });
- expect(await rpc(sid, 'routerdeck', 'ping', { host: '127.0.0.1; reboot' })).toMatchObject({ ok: false, error: 'invalid' });
- expect(await rpc(sid, 'routerdeck', 'ping', { host: '-f' })).toMatchObject({ ok: false, error: 'invalid' });
- expect(await rpc(sid, 'routerdeck', 'ping', { host: 'no-such-host.invalid' })).toMatchObject({ ok: false, error: 'resolve' });
- const trace = await rpc(sid, 'routerdeck', 'traceroute', { host: '127.0.0.1', max: 3 });
- expect(trace.hops[0]).toMatchObject({ hop: 1, address: '127.0.0.1' });
+// Runs a diagnostics job to its end (or for `seconds`) and returns its results.
+async function runJob(args, seconds = 15) {
+ const start = await rpc(sid, 'routerdeck', 'diag', { action: 'start', ...args });
+ expect(start).toMatchObject({ ok: true });
+ const results = [];
+ let from = 0, running = true;
+ for (let round = 0; running && round < seconds * 4; round++) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const poll = await rpc(sid, 'routerdeck', 'diag', { action: 'poll', id: start.id, from });
+  expect(poll.ok).toBe(true);
+  results.push(...poll.results);
+  from = poll.next;
+  running = poll.running;
+ }
+ return { id: start.id, results, running };
+}
+
+test('ping and traceroute run as jobs outside rpcd and accept only plain hosts', async () => {
+ const ping = await runJob({ tool: 'ping', host: '127.0.0.1', count: 2 });
+ expect(ping.results).toEqual([{ address: '127.0.0.1' }, expect.objectContaining({ seq: 0, host: '127.0.0.1', ttl: 64 }), expect.objectContaining({ seq: 1, ttl: 64 })]);
+ const six = await runJob({ tool: 'ping', host: '::1', family: 6, size: 100, count: 1 });
+ expect(six.results[1]).toMatchObject({ seq: 0, size: 108 });
+ // Busybox ping prints nothing for a lost reply; the job still reports it.
+ const lost = await runJob({ tool: 'ping', host: '192.168.77.250', count: 1 });
+ expect(lost.results[1]).toEqual({ seq: 0, status: 'timeout' });
+ expect((await runJob({ tool: 'ping', host: 'no-such-host.invalid' })).results).toEqual([expect.objectContaining({ error: 'resolve' })]);
+ for (const host of ['127.0.0.1; reboot', '-f', '$(id)'])
+  expect(await rpc(sid, 'routerdeck', 'diag', { action: 'start', tool: 'ping', host })).toMatchObject({ ok: false, error: 'invalid' });
+ expect(await rpc(sid, 'routerdeck', 'diag', { action: 'poll', id: '../../etc' })).toMatchObject({ ok: false, error: 'gone' });
+ const trace = await runJob({ tool: 'traceroute', host: '127.0.0.1', max: 3, count: 2 });
+ expect(trace.results.filter(item => item.round).map(item => item.hops)).toEqual([[expect.objectContaining({ hop: 1, address: '127.0.0.1' })], [expect.objectContaining({ hop: 1, address: '127.0.0.1' })]]);
+});
+
+test('a slow probe does not hold up other calls, and Stop ends the job', async () => {
+ // A silent hop waits for its timeout; other calls are answered meanwhile.
+ const start = await rpc(sid, 'routerdeck', 'diag', { action: 'start', tool: 'traceroute', host: '192.168.77.250', max: 5, timeout: 3 });
+ const before = Date.now();
+ await rpc(sid, 'system', 'info');
+ expect(Date.now() - before).toBeLessThan(1000);
+ await expect.poll(() => ssh('pgrep -f routerdeck/dia[g] || true')).not.toBe('');
+ expect(await rpc(sid, 'routerdeck', 'diag', { action: 'stop', id: start.id })).toEqual({ ok: true });
+ await expect.poll(() => ssh('pgrep -f routerdeck/dia[g] || true'), { timeout: 10000 }).toBe('');
+ expect((await rpc(sid, 'routerdeck', 'diag', { action: 'poll', id: start.id })).running).toBe(false);
 });

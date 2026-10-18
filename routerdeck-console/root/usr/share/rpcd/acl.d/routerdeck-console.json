@@ -8,7 +8,7 @@
 				"network": [ "get_proto_handlers" ],
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
-				"routerdeck": [ "conntrack", "fw_counters", "history", "info", "log", "ping", "routes", "terminal", "traceroute" ],
+				"routerdeck": [ "conntrack", "diag", "fw_counters", "history", "info", "log", "routes", "terminal" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]

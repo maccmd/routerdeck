@@ -117,3 +117,17 @@ export function addressKey(text) {
  if (v6 !== null) return `1${v6.toString(16).padStart(32, '0')}/${String(prefix ?? 128).padStart(3, '0')}`;
  return `2${String(text ?? '')}`;
 }
+
+// Whether an address lies in network/prefix, for IPv4 and IPv6 alike.
+export function inPrefix(address, network, prefix) {
+ const v4 = parseIPv4(address), net4 = parseIPv4(network);
+ if (v4 !== null || net4 !== null) {
+  if (v4 === null || net4 === null || !(prefix >= 0 && prefix <= 32)) return false;
+  const size = 2 ** (32 - prefix);
+  return Math.floor(v4 / size) === Math.floor(net4 / size);
+ }
+ const v6 = parseIPv6(address), net6 = parseIPv6(network);
+ if (v6 === null || net6 === null || !(prefix >= 0 && prefix <= 128)) return false;
+ const shift = BigInt(128 - prefix);
+ return v6 >> shift === net6 >> shift;
+}

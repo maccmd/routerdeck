@@ -19,6 +19,11 @@ export const MENU = [
   { id: 'ipv6-routes', label: 'Routes', window: 'ipv6-routes' }
  ] },
  { id: 'log', label: 'Log', icon: 'log', window: 'log' },
+ { id: 'tools', label: 'Tools', icon: 'tools', children: [
+  { id: 'tool-ping', label: 'Ping', window: 'tool-ping' },
+  { id: 'tool-traceroute', label: 'Traceroute', window: 'tool-traceroute' },
+  { id: 'tool-torch', label: 'Torch', window: 'tool-torch' }
+ ] },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
  { id: 'windows', label: 'Windows', icon: 'window', children: [
   { id: 'windows-cascade', label: 'Cascade', action: 'cascade' },

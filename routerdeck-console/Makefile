@@ -34,6 +34,7 @@ define Package/routerdeck-console/install
 	$(CP) ./root/* $(1)/
 	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-safemode $(1)/etc/init.d/routerdeck-safemode
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/safemode-watchdog $(1)/usr/libexec/routerdeck/safemode-watchdog
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/diag $(1)/usr/libexec/routerdeck/diag
 endef
 
 # rpcd loads ucode plugins only at startup.

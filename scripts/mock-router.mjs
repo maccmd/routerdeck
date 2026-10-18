@@ -352,18 +352,79 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   return { available: true, counters: result };
  }
 
+ // Byte counters grow at a steady per-flow rate, so Torch shows stable rates.
  function conntrack() {
-  const t = Math.floor(seconds());
+  const t = seconds();
   const entries = Array.from({ length: 48 }, (unused, index) => {
    const client = CLIENTS[index % CLIENTS.length];
    const tcp = index % 4 !== 3;
+   const txRate = 120 + index * 40, rxRate = index % 7 === 0 ? 180000 + index * 1000 : 400 + index * 90;
+   const txBytes = Math.floor(5000 + index * 700 + txRate * t), rxBytes = Math.floor(9000 + index * 900 + rxRate * t);
+   const txPackets = Math.floor(txBytes / 120), rxPackets = Math.floor(rxBytes / 1200);
+   const dst = `198.51.100.${(index * 7) % 250 + 1}`, sport = String(40000 + index * 13), dport = tcp ? (index % 2 ? '443' : '80') : '53';
    return {
-    family: 'ipv4', protocol: tcp ? 'tcp' : 'udp', timeout: tcp ? 7440 - ((t + index * 37) % 7000) : 30 + (index % 30), packets: 10 + index * 7 + t, bytes: (10 + index * 7 + t) * 640,
+    family: 'ipv4', protocol: tcp ? 'tcp' : 'udp', timeout: tcp ? 7440 - ((Math.floor(t) + index * 37) % 7000) : 30 + (index % 30),
+    packets: txPackets + rxPackets, bytes: txBytes + rxBytes, tx_packets: txPackets, tx_bytes: txBytes, rx_packets: rxPackets, rx_bytes: rxBytes,
     flags: tcp ? ['ASSURED'] : index % 2 ? ['UNREPLIED'] : [], state: tcp ? 'ESTABLISHED' : undefined,
-    src: client.ipaddr, dst: `198.51.100.${(index * 7) % 250 + 1}`, sport: String(40000 + index * 13), dport: tcp ? (index % 2 ? '443' : '80') : '53'
+    src: client.ipaddr, dst, sport, dport, reply_src: dst, reply_dst: '203.0.113.42'
    };
   });
+  const icmp = Math.floor(t);
+  entries.push({ family: 'ipv4', protocol: 'icmp', timeout: 29, packets: 2 * icmp + 2, bytes: (2 * icmp + 2) * 84, tx_packets: icmp + 1, tx_bytes: (icmp + 1) * 84, rx_packets: icmp + 1, rx_bytes: (icmp + 1) * 84, flags: [], src: '192.168.88.120', dst: '192.168.88.1', type: '8', code: '0', id: '311', reply_src: '192.168.88.1', reply_dst: '192.168.88.120' });
+  entries.push({ family: 'ipv6', protocol: 'tcp', timeout: 7000, packets: 0, bytes: 0, tx_packets: Math.floor(10 + t), tx_bytes: Math.floor(2000 + 900 * t), rx_packets: Math.floor(20 + 4 * t), rx_bytes: Math.floor(30000 + 6000 * t), flags: ['ASSURED'], state: 'ESTABLISHED', src: 'fd00:88::5c1', dst: '2001:db8:200::80', sport: '51000', dport: '443', reply_src: '2001:db8:200::80', reply_dst: 'fd00:88::5c1' });
+  for (const entry of entries.slice(-1)) { entry.packets = entry.tx_packets + entry.rx_packets; entry.bytes = entry.tx_bytes + entry.rx_bytes; }
   return { available: true, count: entries.length, max: 16384, entries };
+ }
+
+ // Ping and Traceroute jobs. Results are derived from the time since the
+ // start, so every poll sees a consistent, growing list.
+ const jobs = new Map();
+ const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
+ const ADDRESS = /^(\d+\.){3}\d+$|:/;
+ const resolveHost = host => ADDRESS.test(host) ? host : host === 'openwrt.org' ? '198.51.100.80' : host.endsWith('.lan') ? '192.168.88.10' : null;
+ const pathTo = address => address.startsWith('192.168.88.') || address.startsWith('fd00:88:') ? [address] : ['10.0.2.2', '100.64.0.1', null, '203.0.113.1', address];
+ function jobResults(job) {
+  const { args } = job, address = resolveHost(args.host);
+  if (!address) return [{ error: 'resolve', message: `${args.tool}: bad address '${args.host}'` }];
+  const end = job.stopped ?? now();
+  const done = Math.floor((end - job.started - 100) / args.interval) + 1;
+  const total = Math.max(0, args.count ? Math.min(args.count, done) : done);
+  const results = [{ address }];
+  for (let index = 0; index < total; index++) {
+   if (args.tool === 'ping') {
+    const lost = address.endsWith('.250') || (address === '198.51.100.80' && index % 5 === 3);
+    const local = address.startsWith('192.168.88.');
+    results.push(lost ? { seq: index, status: 'timeout' } : { seq: index, host: address, size: args.size + 8, ttl: local ? 64 : 57, time: Math.round((local ? 0.31 + (index % 3) * 0.05 : 12.4 + (index % 4) * 1.3) * 1000) / 1000 });
+   } else {
+    const path = pathTo(address).slice(0, args.max);
+    results.push({ round: index + 1, hops: path.map((hop, position) => {
+     const silent = hop === null || address.endsWith('.250') || (position === 1 && index % 3 === 2);
+     return { hop: position + 1, address: silent ? null : hop, time: silent ? null : Math.round((0.4 + position * 3.1 + (index % 4) * 0.7) * 1000) / 1000, status: null };
+    }) });
+   }
+  }
+  return results;
+ }
+ function diag(args) {
+  if (args.action === 'start') {
+   if (!['ping', 'traceroute'].includes(args.tool)) return { ok: false, error: 'invalid', message: 'Unknown tool' };
+   if (typeof args.host !== 'string' || !HOST.test(args.host)) return { ok: false, error: 'invalid', message: 'Enter an address or host name' };
+   const within = (value, low, high, fallback) => Number.isInteger(value) && value >= low && value <= high ? value : fallback;
+   const job = {
+    tool: args.tool, host: args.host, family: args.family === 4 || args.family === 6 ? args.family : 0, size: within(args.size, 16, 65500, 56), count: within(args.count, 0, 100000, 0),
+    interval: within(args.interval, 200, 60000, 1000), timeout: within(args.timeout, 1, 10, 1), max: within(args.max, 1, 30, 15), protocol: args.protocol === 'udp' ? 'udp' : 'icmp'
+   };
+   const id = (++serial).toString(16).padStart(16, '0');
+   jobs.set(id, { args: job, started: now(), stopped: null });
+   return { ok: true, id, ...job };
+  }
+  const job = jobs.get(args.id);
+  if (args.action === 'stop') { if (job && !job.stopped) job.stopped = now(); return { ok: true }; }
+  if (args.action !== 'poll') return { ok: false, error: 'invalid', message: 'Unknown action' };
+  if (!job) return { ok: false, error: 'gone', message: 'This job has ended' };
+  const results = jobResults(job), from = Number.isInteger(args.from) ? args.from : 0;
+  const finished = results[0]?.error || (job.args.count && results.length - 1 >= job.args.count);
+  return { ok: true, running: !job.stopped && !finished, results: results.slice(from), next: results.length };
  }
 
  function log({ after = 0, lines = 1000 } = {}) {
@@ -397,7 +458,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  return {
   watchdog,
   uci: config => configs[config] ? clone(configs[config]) : null,
-  devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases, wirelessStatus, wifi,
+  devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases, wirelessStatus, wifi, diag,
   history: history_, apply, undo: () => step('undo'), redo: () => step('redo'), safemode,
   terminal: () => ({ installed: false, running: false, port: 7681, ssl: false, interface: '@lan', url_override: null })
  };

@@ -12,6 +12,8 @@ export const HISTORY_ID = RUN + '/history-id.json';
 export const SAFE = RUN + '/safemode';
 export const LAST_ROLLBACK = RUN + '/last-rollback.json';
 export const DELTA = RUN + '/uci';
+// Ping and Traceroute jobs, one directory each.
+export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects.
 export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system' ];
 export const HISTORY_LIMIT = 100;
@@ -20,7 +22,7 @@ export const SAFE_LIMIT = 100;
 export const SAFE_TIMEOUT = 120;
 
 export function ensure_dirs() {
-	for (let dir in [ RUN, DELTA, SAFE, SAFE + '/snapshot' ])
+	for (let dir in [ RUN, DELTA, SAFE, SAFE + '/snapshot', DIAG ])
 		mkdir(dir, 0700);
 };
 

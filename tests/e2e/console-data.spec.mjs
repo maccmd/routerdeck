@@ -59,10 +59,10 @@ test('lists show live router data with RouterOS-style flags and comments', async
  await expect(row(firewall, 'dst-nat')).toContainText('192.168.88.10');
  await expect(row(firewall, 'masquerade').locator('.is-flags')).toHaveText('D');
  await firewall.getByRole('tab', { name: 'Connections' }).click();
- await expect(firewall.getByRole('status')).toContainText('48 items');
- await expect(firewall.getByRole('status')).toContainText('48 tracked of 16384');
+ await expect(firewall.getByRole('status')).toContainText('50 items');
+ await expect(firewall.getByRole('status')).toContainText('50 tracked of 16384');
  await firewall.getByLabel('Find').fill('198.51.100.8');
- await expect(firewall.getByRole('status')).toContainText(/\d+ items out of 48/);
+ await expect(firewall.getByRole('status')).toContainText(/\d+ items out of 50/);
  await mkdir('output/playwright/screenshots', { recursive: true });
  await page.screenshot({ animations: 'disabled', path: `output/playwright/screenshots/console-data-${info.project.name}.png` });
  await firewall.getByRole('button', { name: 'Close Firewall' }).click();

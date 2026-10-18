@@ -14,7 +14,7 @@ tar -xof -
 find htdocs/routerdeck -type f | while read -r file; do mkdir -p "/www/routerdeck"; cp "$file" "/www/routerdeck/${file#htdocs/routerdeck/}"; done
 cd root
 find . -type f | while read -r file; do mkdir -p "/${file%/*}"; cp "$file" "/${file#./}"; done
-chmod 755 /etc/init.d/routerdeck-safemode /usr/libexec/routerdeck/safemode-watchdog
+chmod 755 /etc/init.d/routerdeck-safemode /usr/libexec/routerdeck/safemode-watchdog /usr/libexec/routerdeck/diag
 rm -rf /tmp/routerdeck-push
 /etc/init.d/rpcd reload
 echo "RouterDeck Console pushed; rpcd reloaded."

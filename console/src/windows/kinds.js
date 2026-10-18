@@ -17,6 +17,9 @@ export const WINDOW_KINDS = {
  'ip-dhcp-server': { title: 'DHCP Server', size: { w: 780, h: 340 }, tabs: [{ label: 'DHCP', model: 'dhcp-servers' }, { label: 'Leases', model: 'dhcp-leases' }, { label: 'DHCPv6 Bindings', model: 'dhcp6-bindings' }] },
  'ip-dns': { title: 'DNS Settings', size: { w: 560, h: 380 }, tabs: [{ label: 'Settings', model: 'dns-settings' }, { label: 'Static', model: 'dns-static' }] },
  log: { title: 'Log', size: { w: 860, h: 420 }, tabs: [{ label: 'Log', model: 'log' }] },
+ 'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
+ 'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },
+ 'tool-torch': { title: 'Torch', size: { w: 980, h: 480 }, multi: true, body: 'torch' },
  terminal: { title: 'Terminal', size: { w: 720, h: 440 }, multi: true, body: 'terminal' },
  item: { title: 'Object', size: { w: 480, h: 320 }, multi: true, body: 'item' }
 };

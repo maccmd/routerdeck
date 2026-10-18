@@ -1,0 +1,134 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Runs one Ping or Traceroute job for the console. It runs outside rpcd,
+// which handles one call at a time and would stall every window while a probe
+// waits for its timeout. Results are appended to <job>/results as JSON lines;
+// the job ends when it is stopped or done, or once no client has read its
+// results for a while.
+'use strict';
+
+import { open, stat, access, popen } from 'fs';
+import { read_json } from 'routerdeck.core';
+
+const IDLE = 15;
+const LIMIT = 3600;
+const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
+
+const dir = ARGV[0];
+const job = read_json(dir + '/args.json', null);
+if (!job || type(job.host) != 'string' || !match(job.host, HOST))
+	exit(1);
+const started = time();
+
+function write(entry) {
+	let file = open(dir + '/results', 'a');
+	file.write(sprintf('%J\n', entry));
+	file.close();
+}
+
+// The plugin touches `seen` on every read.
+function alive() {
+	if (access(dir + '/stop'))
+		return false;
+	let seen = stat(dir + '/seen')?.mtime ?? started;
+	return time() - seen <= IDLE && time() - started <= LIMIT;
+}
+
+function run(command) {
+	let pipe = popen(command + ' 2>&1', 'r');
+	if (!pipe)
+		return '';
+	let output = pipe.read('all') ?? '';
+	pipe.close();
+	return output;
+}
+
+function now_ms() {
+	let now = clock(true);
+	return now[0] * 1000 + now[1] / 1000000;
+}
+
+// Wait for the rest of the interval, noticing Stop within a quarter second.
+function pause(since) {
+	let left = job.interval - (now_ms() - since);
+	while (left > 0 && alive()) {
+		sleep(int(min(left, 250)));
+		left = job.interval - (now_ms() - since);
+	}
+}
+
+const FAMILY = job.family == 6 ? '-6 ' : job.family == 4 ? '-4 ' : '';
+
+// One echo request per process: busybox ping prints nothing for a lost
+// reply, and this way every sequence number gets a definite result.
+function ping() {
+	let target = job.host;
+	for (let seq = 0; (!job.count || seq < job.count) && alive(); seq++) {
+		let since = now_ms();
+		let output = run(sprintf('ping %s-c 1 -W %d -s %d %s', FAMILY, job.timeout, job.size, target));
+		let header = match(output, /PING [^ ]+ \(([^)]+)\)/);
+		if (!header) {
+			write({ error: 'resolve', message: trim(output) || 'Host not found' });
+			return;
+		}
+		// Resolve a name once; later requests go to the same address.
+		if (seq == 0) {
+			target = header[1];
+			write({ address: target });
+		}
+		let reply = match(output, /([0-9]+) bytes from (.+): seq=[0-9]+ ttl=([0-9]+) time=([0-9.]+) ms/);
+		let problem = match(output, /\nping: ([^\n]+)/);
+		if (reply)
+			write({ seq, host: reply[2], size: +reply[1], ttl: +reply[3], time: +reply[4] });
+		else
+			write({ seq, status: problem ? problem[1] : 'timeout' });
+		pause(since);
+	}
+}
+
+function parse_hop(output, hop) {
+	for (let line in split(output, '\n')) {
+		let found = match(line, /^ *([0-9]+) +([^ ]+)( +([0-9.]+) ms)?( +(![A-Za-z0-9]*))?/);
+		if (found && +found[1] == hop)
+			return { hop, address: found[2] == '*' ? null : found[2], time: found[4] != null ? +found[4] : null, status: found[6] };
+	}
+	return { hop, address: null, time: null };
+}
+
+// Like mtr: every round sends one probe to each hop, all at once, so a silent
+// hop costs one timeout per round instead of one per hop.
+function traceroute() {
+	let target = job.host, last = job.max;
+	let options = sprintf('%s%s-n -q 1 -w %d', FAMILY, job.protocol == 'udp' ? '' : '-I ', job.timeout);
+	for (let round = 1; (!job.count || round <= job.count) && alive(); round++) {
+		let since = now_ms(), script = '';
+		for (let hop = 1; hop <= last; hop++)
+			script += sprintf('traceroute %s -f %d -m %d %s >%s/hop.%d 2>&1 & ', options, hop, hop, target, dir, hop);
+		system([ '/bin/sh', '-c', script + 'wait' ]);
+		let hops = [];
+		for (let hop = 1; hop <= last; hop++) {
+			let output = open(dir + '/hop.' + hop, 'r')?.read('all') ?? '';
+			if (round == 1 && hop == 1) {
+				let header = match(output, /traceroute to [^ ]+ \(([^)]+)\)/);
+				if (!header) {
+					write({ error: 'resolve', message: trim(output) || 'Host not found' });
+					return;
+				}
+				target = header[1];
+				write({ address: target });
+			}
+			push(hops, parse_hop(output, hop));
+		}
+		// The path ends at the first hop that is the destination itself.
+		for (let item in hops)
+			if (item.address == target && item.hop < last)
+				last = item.hop;
+		write({ round, hops: filter(hops, item => item.hop <= last) });
+		pause(since);
+	}
+}
+
+if (job.tool == 'ping')
+	ping();
+else if (job.tool == 'traceroute')
+	traceroute();

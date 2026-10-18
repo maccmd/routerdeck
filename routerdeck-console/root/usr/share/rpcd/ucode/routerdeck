@@ -10,11 +10,11 @@
 // Functions are defined before their callers: ucode does not hoist them.
 'use strict';
 
-import { access, readfile, unlink, open } from 'fs';
+import { access, readfile, writefile, unlink, open, lsdir, stat, mkdir, rmdir } from 'fs';
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import {
-	CONFIGS, RUN, SAFE, LAST_ROLLBACK, DELTA, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
+	CONFIGS, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
 	safe_heartbeat, safe_clear, safe_restore, log_message
@@ -144,8 +144,10 @@ function parse_conntrack(line) {
 		let key = pair[1], value = pair[2];
 		if (key == 'src' && entry.src != null)
 			reply = true;
-		if (!reply && key in [ 'src', 'dst', 'sport', 'dport' ])
+		if (!reply && key in [ 'src', 'dst', 'sport', 'dport', 'type', 'code', 'id' ])
 			entry[key] = value;
+		else if (reply && key in [ 'src', 'dst' ] && entry['reply_' + key] == null)
+			entry['reply_' + key] = value;
 		else if (key == 'packets') {
 			entry.packets += int(value);
 			entry[reply ? 'rx_packets' : 'tx_packets'] += int(value);
@@ -226,43 +228,115 @@ function log_read(after, lines) {
 // Arguments reach a shell, so only plain host names and addresses pass.
 // No leading '-', so a host can never be read as an option.
 const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
+const JOB = /^[0-9a-f]{16}$/;
+const JOB_LIMIT = 8;
+const RUNNER = '/usr/libexec/routerdeck/diag';
 
-function family_flag(family) {
-	return family == 6 ? '-6' : family == 4 ? '-4' : '';
+// Ping and Traceroute run as jobs outside rpcd (see libexec/routerdeck/diag),
+// so a probe waiting for its timeout never holds up other calls.
+function job_alive(dir) {
+	let pid = trim(readfile(dir + '/pid') ?? '');
+	return match(pid, /^[0-9]+$/) != null && index(readfile('/proc/' + pid + '/cmdline') ?? '', RUNNER) >= 0;
 }
 
-// One echo request per call; the client repeats it to show replies live.
-function ping(args) {
-	if (type(args.host) != 'string' || !match(args.host, HOST))
-		return failure('invalid', 'Enter an address or host name');
-	// ucode treats a missing argument as 0 in comparisons; check the type first.
-	// Below 16 data bytes busybox ping cannot measure the round-trip time.
-	let size = type(args.size) == 'int' && args.size >= 16 && args.size <= 65500 ? args.size : 56;
-	let result = run(sprintf('ping %s -c 1 -W 1 -s %d %s 2>&1', family_flag(args.family), size, args.host));
-	let reply = match(result.output, /([0-9]+) bytes from (.+): seq=[0-9]+ ttl=([0-9]+) time=([0-9.]+) ms/);
-	if (reply)
-		return { ok: true, replied: true, host: reply[2], size: int(reply[1]), ttl: int(reply[3]), time: +reply[4] };
-	let target = match(result.output, /^PING [^ ]+ \(([^)]+)\)/);
-	if (!target)
-		return failure('resolve', trim(result.output) || 'Host not found');
-	return { ok: true, replied: false, host: target[1] };
+function job_remove(dir) {
+	for (let name in lsdir(dir) ?? [])
+		unlink(dir + '/' + name);
+	rmdir(dir);
 }
 
-function traceroute(args) {
-	if (type(args.host) != 'string' || !match(args.host, HOST))
-		return failure('invalid', 'Enter an address or host name');
-	let command = args.family == 6 ? 'traceroute6' : 'traceroute';
-	let hops = args.max >= 1 && args.max <= 30 ? args.max : 20;
-	let result = run(sprintf('%s -n -w 1 -q 1 -m %d %s 2>&1', command, hops, args.host));
-	let list = [];
-	for (let line in split(result.output, '\n')) {
-		let hop = match(line, /^ *([0-9]+) +([^ ]+)( +([0-9.]+) ms)?/);
-		if (hop)
-			push(list, { hop: int(hop[1]), address: hop[2] == '*' ? null : hop[2], time: hop[4] != null ? +hop[4] : null });
+// Removes jobs nobody has read for two minutes and counts the running ones.
+function job_sweep() {
+	let running = 0;
+	for (let id in lsdir(DIAG) ?? []) {
+		let dir = DIAG + '/' + id;
+		if (job_alive(dir))
+			running++;
+		else if (time() - (stat(dir + '/seen')?.mtime ?? 0) > 120)
+			job_remove(dir);
 	}
-	if (!length(list))
-		return failure('resolve', trim(result.output) || 'Traceroute failed');
-	return { ok: true, hops: list };
+	return running;
+}
+
+function job_id() {
+	let bytes = readfile('/dev/urandom', 8) ?? '', id = '';
+	for (let i = 0; i < length(bytes); i++)
+		id += sprintf('%02x', ord(bytes, i));
+	return id;
+}
+
+function job_dir(args) {
+	if (type(args.id) != 'string' || !match(args.id, JOB))
+		return null;
+	let dir = DIAG + '/' + args.id;
+	return stat(dir)?.type == 'directory' ? dir : null;
+}
+
+// ucode treats a missing argument as 0 in comparisons; check the type first.
+function int_in(value, low, high, fallback) {
+	return type(value) == 'int' && value >= low && value <= high ? value : fallback;
+}
+
+function diag_start(args) {
+	if (!(args.tool in [ 'ping', 'traceroute' ]))
+		return failure('invalid', 'Unknown tool');
+	if (type(args.host) != 'string' || !match(args.host, HOST))
+		return failure('invalid', 'Enter an address or host name');
+	ensure_dirs();
+	if (job_sweep() >= JOB_LIMIT)
+		return failure('busy', 'Too many pings and traceroutes are running; stop one first');
+	// Below 16 data bytes busybox ping cannot measure the round-trip time.
+	let job = {
+		tool: args.tool, host: args.host, family: args.family == 4 || args.family == 6 ? args.family : 0,
+		size: int_in(args.size, 16, 65500, 56), count: int_in(args.count, 0, 100000, 0),
+		interval: int_in(args.interval, 200, 60000, 1000), timeout: int_in(args.timeout, 1, 10, 1),
+		max: int_in(args.max, 1, 30, 15), protocol: args.protocol == 'udp' ? 'udp' : 'icmp'
+	};
+	let id = job_id(), dir = DIAG + '/' + id;
+	if (length(id) != 16 || !mkdir(dir, 0700))
+		return failure('failed', 'Could not create the job');
+	write_json(dir + '/args.json', job);
+	writefile(dir + '/seen', sprintf('%d', time()));
+	let code = system([ '/bin/sh', '-c', sprintf('%s %s </dev/null >/dev/null 2>&1 & echo $! >%s/pid', RUNNER, dir, dir) ]);
+	if (code != 0) {
+		job_remove(dir);
+		return failure('failed', 'Could not start ' + args.tool);
+	}
+	return { ok: true, id, ...job };
+}
+
+// Returns the complete result lines from `from` on; a line still being
+// written is left for the next read.
+function diag_poll(args) {
+	let dir = job_dir(args);
+	if (!dir)
+		return failure('gone', 'This job has ended');
+	writefile(dir + '/seen', sprintf('%d', time()));
+	let lines = split(readfile(dir + '/results') ?? '', '\n');
+	let from = int_in(args.from, 0, length(lines), 0), results = [];
+	for (let i = from; i < length(lines) - 1; i++) {
+		try {
+			push(results, json(lines[i]));
+		}
+		catch (e) {
+			push(results, { error: 'parse', message: lines[i] });
+		}
+	}
+	return { ok: true, running: job_alive(dir), results, next: max(from, length(lines) - 1) };
+}
+
+function diag(args) {
+	if (args.action == 'start')
+		return diag_start(args);
+	if (args.action == 'poll')
+		return diag_poll(args);
+	if (args.action == 'stop') {
+		let dir = job_dir(args);
+		if (dir)
+			writefile(dir + '/stop', '');
+		return { ok: true };
+	}
+	return failure('invalid', 'Unknown action');
 }
 
 /* --- Terminal ----------------------------------------------------------- */
@@ -650,13 +724,9 @@ return {
 		terminal: {
 			call: () => terminal()
 		},
-		ping: {
-			args: { host: 'host', family: 4, size: 4 },
-			call: request => ping(request.args)
-		},
-		traceroute: {
-			args: { host: 'host', family: 4, max: 4 },
-			call: request => traceroute(request.args)
+		diag: {
+			args: { action: 'action', id: 'id', tool: 'tool', host: 'host', family: 4, size: 4, count: 4, interval: 4, timeout: 4, max: 4, protocol: 'protocol', from: 4 },
+			call: request => diag(request.args)
 		},
 		history: {
 			call: () => history_summary()

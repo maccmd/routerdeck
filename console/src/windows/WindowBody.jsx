@@ -4,11 +4,16 @@ import { WINDOW_KINDS } from './kinds.js';
 import { ListWindow } from '../list/ListWindow.jsx';
 import { ItemWindow } from '../item/ItemWindow.jsx';
 import { TerminalWindow } from './TerminalWindow.jsx';
+import { PingWindow, TracerouteWindow, TorchWindow } from './ToolWindows.jsx';
+
+const TOOLS = { ping: PingWindow, traceroute: TracerouteWindow, torch: TorchWindow };
 
 export function WindowBody({ win }) {
  const spec = WINDOW_KINDS[win.kind];
  const active = !win.minimized;
  if (spec.body === 'terminal') return <TerminalWindow active={active} />;
  if (spec.body === 'item') return <ItemWindow win={win} active={active} />;
+ const Tool = TOOLS[spec.body];
+ if (Tool) return <Tool win={win} active={active} />;
  return <ListWindow spec={spec} kind={win.kind} win={win} active={active} />;
 }
