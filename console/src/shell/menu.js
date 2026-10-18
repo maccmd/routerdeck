@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// Main menu grouped by subsystem. `window` opens an MDI window kind; items
+// whose `requires` capability is missing are hidden rather than greyed out.
+
+export const MENU = [
+ { id: 'interfaces', label: 'Interfaces', icon: 'interfaces', window: 'interfaces' },
+ { id: 'ip', label: 'IP', icon: 'ip', children: [
+  { id: 'ip-addresses', label: 'Addresses', window: 'ip-addresses' },
+  { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },
+  { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
+  { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' }
+ ] },
+ { id: 'log', label: 'Log', icon: 'log', window: 'log' },
+ { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
+ { separator: true },
+ { id: 'luci', label: 'LuCI', icon: 'luci', href: '/cgi-bin/luci/', requires: 'luci' },
+ { id: 'exit', label: 'Exit', icon: 'exit', action: 'logout' }
+];
+
+export function visibleMenu(menu, capabilities = {}) {
+ return menu
+  .filter(item => !item.requires || capabilities[item.requires])
+  .map(item => item.children ? { ...item, children: visibleMenu(item.children, capabilities) } : item)
+  .filter(item => !item.children || item.children.length);
+}

@@ -16,5 +16,6 @@ async function check(path) {
 await check(join(root, 'luci-theme-routerdeck'));
 await check(join(root, 'luci-app-routerdeck'));
 await check(join(root, 'luci-app-routerdeck-workspace'));
+await check(join(root, 'routerdeck-console/root'));
 await check(join(root, 'preview'));
 console.log(`Validated ${count} JavaScript and JSON sources, including inline navigation.`);

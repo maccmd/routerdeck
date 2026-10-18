@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### RouterDeck Console (experimental)
+
+- Add the separate `routerdeck-console` package, served at `/routerdeck/`, with
+  an rpcd ACL and a `routerdeck` ucode plugin (`info`).
+- Add a Preact client built with esbuild: ubus JSON-RPC login with batching and
+  session-expiry recovery, a subsystem menu with flyouts, and MDI windows that
+  open cascaded, move, resize, minimize and maximize inside the work area and
+  restore with the session. Lists show their layout but no router data yet.
+- Add a simulated `/ubus` endpoint to the preview server and unit/browser tests.
+
 ### Navigation and windows
 
 - Move windows into the theme on every page. Menu labels navigate normally;

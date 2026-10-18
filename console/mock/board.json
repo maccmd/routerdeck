@@ -1,0 +1,16 @@
+{
+  "kernel": "6.12.94",
+  "hostname": "routerdeck-preview",
+  "system": "ARMv8 Processor rev 0",
+  "model": "Simulated router",
+  "board_name": "routerdeck,preview",
+  "rootfs_type": "squashfs",
+  "release": {
+    "distribution": "OpenWrt",
+    "version": "25.12.5",
+    "revision": "r33051-f5dae5ece4",
+    "target": "armsr/armv8",
+    "description": "OpenWrt 25.12.5 r33051-f5dae5ece4",
+    "builddate": "1792108800"
+  }
+}

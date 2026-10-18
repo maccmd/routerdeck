@@ -10,3 +10,4 @@ playwright-report/
 .playwright-cli/
 
 __pycache__/
+routerdeck-console/htdocs/

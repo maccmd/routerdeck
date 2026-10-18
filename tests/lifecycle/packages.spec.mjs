@@ -43,7 +43,8 @@ test('theme selection, Bootstrap recovery, removal and reinstall', async ({ page
   await expect(page.getByText('Theme fallback', { exact:true })).toHaveCount(0);
  } finally {
   const folder = `dist/packages/${series}`;
-  const files = (await readdir(folder)).filter(file => file.endsWith(series === '25.12' ? '.apk' : '.ipk'));
+  // The theme lifecycle covers the three LuCI packages; the console is independent.
+  const files = (await readdir(folder)).filter(file => file.startsWith('luci-') && file.endsWith(series === '25.12' ? '.apk' : '.ipk'));
   expect(files).toHaveLength(3);
   for (const file of files) ssh('cat > /tmp/' + file, await readFile(folder + '/' + file));
   ssh((series === '25.12' ? 'apk add --allow-untrusted ' : 'opkg install ') + files.map(file => '/tmp/' + file).join(' '));

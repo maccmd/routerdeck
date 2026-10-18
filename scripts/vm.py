@@ -116,15 +116,15 @@ elif args.action == 'provision':
     print('Provisioned. Password is in .cache/vm/password (not committed).')
 elif args.action == 'install':
     files = sorted((ROOT / 'dist/packages' / release['series']).glob('*.' + release['format']))
-    if len(files) != 3:
-        raise SystemExit('Build all packages with scripts/package.sh first')
+    if len(files) != 4:
+        raise SystemExit('Build all four packages with scripts/package.sh first')
     for package in files:
         ssh('cat > /tmp/' + package.name, input=package.read_bytes())
     paths = ' '.join('/tmp/' + package.name for package in files)
     command = 'apk add --allow-untrusted ' if release['format'] == 'apk' else 'opkg install '
     ssh(command + paths)
     ssh('uci set luci.main.mediaurlbase=/luci-static/routerdeck && uci commit luci')
-    print(f"RouterDeck installed: http://127.0.0.1:{release['http']}/cgi-bin/luci/")
+    print(f"RouterDeck installed: http://127.0.0.1:{release['http']}/cgi-bin/luci/ and /routerdeck/")
 elif args.action == 'stop':
     # Address only the monitor created by this script, never kill by process name.
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as control:

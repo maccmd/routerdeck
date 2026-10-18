@@ -1,0 +1,12 @@
+{
+	"routerdeck-console": {
+		"description": "RouterDeck Console",
+		"read": {
+			"ubus": {
+				"routerdeck": [ "info" ],
+				"session": [ "destroy" ],
+				"system": [ "board", "info" ]
+			}
+		}
+	}
+}

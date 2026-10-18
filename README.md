@@ -2,7 +2,7 @@
 
 A compact dark and light theme for **OpenWrt LuCI**, inspired by the information
 density of desktop network tools. Real LuCI forms, real package installation,
-and a separate live dashboard. No frontend framework runs on the router.
+and a separate live dashboard. The theme uses plain JavaScript and CSS.
 
 [Русский](README.ru.md) · [Installation](docs/installation.md) · [Navigation and windows](docs/navigation.md) · [Development](docs/development.md) · [Compatibility](docs/compatibility.md)
 
@@ -25,6 +25,11 @@ downloadable packages. Build current source to try them; see the
   and basic WireGuard interface state using existing ubus/rpcd services.
 - **`luci-app-routerdeck-workspace`**, compatibility only: redirects old Workspace
   bookmarks. Windows are now built into the theme, without a separate menu page.
+- **`routerdeck-console`**, experimental and separate from LuCI: a windowed
+  console at `/routerdeck/` that talks to rpcd over `/ubus` directly. Stage 0
+  provides login, the main menu and movable windows; router data and editing
+  follow the [console plan](docs/console-plan.ru.md) (in Russian). Its bundle
+  includes Preact (MIT).
 - Bootstrap remains installed. Installing RouterDeck registers it without
   changing the current design. Removing the selected theme restores Bootstrap.
 

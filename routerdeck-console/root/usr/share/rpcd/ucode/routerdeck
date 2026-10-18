@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: Apache-2.0
+// RouterDeck Console backend for rpcd. Exposed as the ubus object
+// `routerdeck`; access is granted by acl.d/routerdeck-console.json.
+'use strict';
+
+import { access } from 'fs';
+import { connect } from 'ubus';
+
+const VERSION = '0.1.0';
+const API = 1;
+
+function executable(path) {
+	return access(path, 'x') == true;
+}
+
+function capabilities() {
+	const bus = connect();
+	const objects = bus?.list() ?? [];
+	bus?.disconnect();
+
+	return {
+		luci: access('/www/cgi-bin/luci') == true,
+		ttyd: executable('/usr/sbin/ttyd'),
+		nft: executable('/usr/sbin/nft'),
+		ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
+		log_read: index(objects, 'log') >= 0,
+		luci_rpc: index(objects, 'luci-rpc') >= 0
+	};
+}
+
+return {
+	routerdeck: {
+		info: {
+			call: function(request) {
+				return {
+					version: VERSION,
+					api: API,
+					user: request.info?.acl?.user,
+					capabilities: capabilities()
+				};
+			}
+		}
+	}
+};

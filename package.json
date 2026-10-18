@@ -8,14 +8,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "node scripts/preview.mjs",
-    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build-console.mjs && node scripts/preview.mjs",
+    "dev:console": "node scripts/build-console.mjs && node scripts/preview.mjs --watch-console",
+    "build": "node scripts/build-console.mjs && node scripts/build.mjs",
+    "build:console": "node scripts/build-console.mjs",
     "check": "node scripts/check.mjs",
     "test": "node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright test",
     "test:vm": "playwright test --config playwright.vm.config.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1"
+    "@playwright/test": "1.64.1",
+    "@preact/signals": "2.11.2",
+    "esbuild": "0.28.2",
+    "preact": "10.29.8"
   }
 }

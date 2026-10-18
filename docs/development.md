@@ -14,7 +14,10 @@ npm run dev
 ```
 
 Preview binds **127.0.0.1:5173**. Its JSON fixtures and mock forms are not shipped
-to the router. Theme, dashboard and window renderers are shared with LuCI;
+to the router. `npm run dev` also builds RouterDeck Console and serves it at
+`/routerdeck/` with a simulated `/ubus` endpoint (`scripts/mock-ubus.mjs`; log in
+as `root` with password `routerdeck`). `npm run dev:console` rebuilds the console
+on every source change. Theme, dashboard and window renderers are shared with LuCI;
 the real data adapter is separate. Never use preview as proof of router behavior.
 
 ## Source layout
@@ -28,6 +31,10 @@ the real data adapter is separate. Never use preview as proof of router behavior
 - `luci-theme-routerdeck/htdocs/luci-static/routerdeck/windows.js`: native page
   windows, layout, editor presentation and form guards.
 - `luci-app-routerdeck-workspace`: compatibility redirect for old bookmarks.
+- `console`: RouterDeck Console client sources (Preact, bundled by esbuild).
+  `src/api/rpc.js` is the ubus JSON-RPC client, `src/mdi` the window manager.
+- `routerdeck-console`: the console's OpenWrt package: rpcd ACL, the `routerdeck`
+  ucode plugin and the generated `htdocs/routerdeck` bundle (not committed).
 - `preview`: simulated data and interactive visual development environment.
 - `tests`: unit, preview, real LuCI and package lifecycle checks.
 - `scripts`: pinned downloads, official SDK package builds, disposable VM tools.
@@ -48,7 +55,10 @@ context targets and failure recovery. Preview tests exercise both browsers at
 desktop/mobile sizes; they do not validate native LuCI forms or RPC permissions.
 The [validation report](testing.md) records the latest results and remaining gaps.
 
-`npm run build` produces only `dist/preview`. Package scripts download the official
+`npm run build` builds the console bundle into `routerdeck-console/htdocs` and the
+static theme preview into `dist/preview`. `scripts/package.sh` rebuilds the console
+bundle on the host before the SDK build, so it needs `npm ci` first; the SDK
+container itself has no Node. Package scripts download the official
 SDK, verify the pinned SHA-256, and build via OpenWrt `BuildPackage` inside an
 amd64 Linux container. The packages are architecture-independent. Docker volumes
 cache extracted SDKs; `.cache` holds downloads. The fixed `SOURCE_DATE_EPOCH`
@@ -76,7 +86,9 @@ python3 scripts/vm.py provision --version 25.12.5  # first boot only
 python3 scripts/vm.py install --version 25.12.5
 ```
 
-The install helper selects RouterDeck in this disposable guest. For repeated
+The install helper selects RouterDeck in this disposable guest. RouterDeck Console
+is then available at `http://127.0.0.1:8088/routerdeck/` (login `root` with the
+guest password). For repeated
 builds with the same package version, remove the guest's RouterDeck packages
 before installing again so the package manager does not retain old files.
 
