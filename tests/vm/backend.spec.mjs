@@ -77,7 +77,7 @@ test('invalid input is rejected and leaves the configuration unchanged', async (
  const rejected = await rpc(sid, 'routerdeck', 'apply', { description: 'Bad rule', ops: [{ op: 'add', config: 'firewall', type: 'rule', values: { name: 'RD-Bad', src: 'wan', dest_port: 'notaport', target: 'ACCEPT' } }] });
  expect(rejected).toMatchObject({ ok: false, error: 'rejected' });
  expect(rejected.details).toContain("invalid value 'notaport'");
- expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'rpcd', section: 'x', values: { timeout: '1' } }] })).toMatchObject({ ok: false, error: 'invalid' });
+ expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'luci', section: 'main', values: { lang: 'auto' } }] })).toMatchObject({ ok: false, error: 'invalid' });
  expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'network', section: 'missing_section', values: { proto: 'none' } }] })).toMatchObject({ ok: false, error: 'missing' });
  expect(await rpc(sid, 'routerdeck', 'apply', { ops: [{ op: 'set', config: 'network', section: 'lan', values: { 'bad-key': 'x' } }] })).toMatchObject({ ok: false, error: 'invalid' });
  expect(ssh('sha256sum /etc/config/firewall /etc/config/network /etc/config/dhcp')).toBe(before);

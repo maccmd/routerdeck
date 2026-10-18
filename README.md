@@ -18,14 +18,19 @@ developed; see [removing it](docs/installation.md#removing-the-old-luci-theme).
 
 ## Features
 
-- **Windows**: Quick Set, WiFi, Interfaces (Ethernet, VLAN, WireGuard and
-  peers), Bridge, PPP, IP (addresses, ARP, routes, firewall with address lists,
-  DHCP server, DNS, Dynamic DNS, services, UPnP), IPv6, Routing rules, Queues
-  (SQM), the System menu (identity, clock, NTP, logging, password, packages,
-  scheduler, startup, resources, backup, reboot) and the log are live object
-  lists with RouterOS-style flags, comments, Find, sorting and context menus.
+- **Windows**: Quick Set, WiFi (with an access list), Interfaces (Ethernet,
+  VLAN, bonding, GRE/EoIP/IPIP/VXLAN tunnels, WireGuard, OpenVPN), Bridge, PPP
+  (clients, PPPoE server, secrets), IP (addresses, ARP, routes, firewall with
+  mangle, raw and address lists, IPsec, DHCP server, DNS, Dynamic DNS, pools,
+  services, settings, UPnP), IPv6, Routing (rules, tables, OSPF and BGP over
+  bird), Queues (simple queues and SQM), Files, the log, and the System menu
+  (identity, clock, NTP, logging, password, users, certificates, packages,
+  scheduler, scripts, startup, resources, LEDs, disks, backup and restore,
+  firmware, reset, reboot). They are live object lists with RouterOS-style
+  flags, comments, Find, sorting and context menus.
 - **Tools**: Ping, Traceroute, Torch, Bandwidth Test (iperf3), IP Scan,
-  Netwatch (a service on the router), Wake on LAN and traffic graphs.
+  Netwatch and Graphing (services on the router), Wake on LAN and live
+  traffic graphs.
 - **Changes apply at once**, one change per Undo step, without a separate
   *Save & Apply*. **Safe Mode** rolls everything back when the console stops
   answering, for example after a change cut your own connection.

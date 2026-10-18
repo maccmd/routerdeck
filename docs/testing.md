@@ -10,10 +10,10 @@ with physical router hardware.
 | Layer | Latest result / scope |
 | --- | --- |
 | Syntax | `npm run check`: the ACL and JSON fixtures parse |
-| Unit | 83 tests pass: window models on data captured from OpenWrt 25.12.5, the command line, the window manager, the RPC client, the poller and the tools |
-| Browser | 246 Playwright tests pass in Chromium and WebKit at 1920×1080, 1440×900, 1280×800 and 390×844 against the simulated router; 82 are skipped by design at the 390-pixel phone width, which the console does not target |
-| OpenWrt 25.12.5 | 45 console checks pass in Chromium against the guest; the package lifecycle check passes |
-| OpenWrt 24.10.8 | 42 console checks pass and 3 skip (no ttyd or Wi-Fi radios in that guest); the package lifecycle check passes |
+| Unit | 121 tests pass: window models on data captured from OpenWrt 25.12.5, the command line, the window manager, the RPC client, the poller and the tools |
+| Browser | 396 Playwright tests pass in Chromium and WebKit at 1920×1080, 1440×900, 1280×800 and 390×844 against the simulated router; 132 are skipped by design at the 390-pixel phone width, which the console does not target |
+| OpenWrt 25.12.5 | 68 console checks pass in Chromium against the guest; the package lifecycle check passes |
+| OpenWrt 24.10.8 | 64 console checks pass and 4 skip (no ttyd or Wi-Fi radios in that guest); the package lifecycle check passes |
 | SDK builds | Official 25.12.5 and 24.10.8 SDK builds pass: one APK and one IPK, with checksums |
 
 ## What the guest checks cover
@@ -40,6 +40,30 @@ before and after.
   router, IP Scan, Netwatch running as a service, Wake on LAN through
   etherwake.
 - **Tools**: Ping, Traceroute and Torch against the guest.
+- **Maintenance** (`console-maintenance`): a package installed and removed
+  through apk or opkg with its output; a script run from its window and from
+  the scheduler's wrapper; Files uploading, downloading and removing through
+  cgi-io; firmware the router rejects is not flashed; a backup made on the
+  router restored after a check, with the reboot that follows.
+- **Administration** (`console-admin`): a user logging in through rpcd with
+  its own password; the web server certificate regenerated, imported and
+  restored; a mount point mounted, unmounted and mounted again; LEDs and
+  disks.
+- **Advanced settings** (`console-advanced`): IP Settings in the kernel;
+  FastPath, mangle and raw rules and zone logging in nftables; advanced DNS
+  options and a pool in dnsmasq; 802.11r and the access list in hostapd.
+- **Tunnels and VPN** (`console-vpn`): GRE and VXLAN tunnels with their
+  addresses in the kernel; a bond of dummy devices; an L2TP client starting
+  xl2tpd and a PPPoE server with the console's options; an OpenVPN server and
+  a client on the same router connecting to each other; an IPsec peer, policy
+  and proposal loaded by swanctl.
+- **Routing and queues** (`console-queues`, `console-bird`): a named table
+  holding a route; a simple queue slowing this test's own download to
+  4 Mbit/s until Undo lifts it; Graphing running as a service and its history
+  in the window; OSPF reaching a full adjacency with a second bird in a
+  network namespace bridged into the LAN, installing its route and
+  announcing the router's networks, and a BGP session with it; bird.conf ends
+  as the package installed it.
 - **WiFi** (25.12 only): an access point and a client on `mac80211_hwsim`
   radios; an SSID change reconfigures hostapd at once and Undo reconnects the
   client. **Shell** (25.12 only): the router shell through ttyd.
@@ -64,6 +88,8 @@ guest has no ttyd or Wi-Fi radios.
 
 Not tested: a physical NanoPi or FriendlyWrt device, real Ethernet and Wi-Fi
 drivers, hardware offloading, a PPPoE session with a real access
-concentrator, a WireGuard handshake with a remote peer, hardware sensors.
+concentrator, WireGuard, IPsec or OpenVPN with a remote peer, OSPF or BGP with
+another vendor's router, flashing firmware that the router accepts, hardware
+sensors.
 See [Compatibility](compatibility.md) and
 [Known limitations](console.md#known-limitations).

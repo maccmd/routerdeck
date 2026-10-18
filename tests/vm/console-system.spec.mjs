@@ -63,6 +63,8 @@ test('a scheduled job reaches crond and runs; Undo takes it back', async ({ page
 test('Startup stops and starts a procd service', async ({ page }) => {
  await openSystem(page, 'Startup');
  const startup = win(page, 'Startup');
+ // The list is virtual; with many packages sysntpd is out of sight.
+ await startup.getByLabel('Find').fill('sysntpd');
  await expect(row(startup, 'sysntpd')).toContainText('running');
  await row(startup, 'sysntpd').click();
  await startup.getByRole('button', { name: 'Stop', exact: true }).click();
