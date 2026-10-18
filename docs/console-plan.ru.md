@@ -1,19 +1,27 @@
 # RouterDeck Console: план WinBox-подобного интерфейса для OpenWrt
 
-Статус на 2026-10-18: **этапы 0–4 выполнены** для первых окон. Описание для
-пользователей — в [console.md](console.md).
+Статус на 2026-10-18: **план выполнен** (этапы 0–4 и все окна из списка
+«дальше»), кроме проверки на настоящем NanoPi — у меня нет доступа к железу.
+Описание для пользователей — в [console.md](console.md).
 
-- **Готово:** Interfaces (+Networks), Bridge (Bridge, Ports, VLANs), IP →
-  Addresses, Routes, Firewall (Filter, NAT, Connections, Zones), DHCP Server
-  (DHCP, Leases), IPv6 → Addresses, Routes, Log, Terminal (ttyd);
-  мгновенное применение, Undo/Redo, Safe Mode со сторожем, горячие клавиши,
-  контекстные меню, выбор колонок, меню Windows, светлая и тёмная тема.
+- **Готово:** Quick Set; WiFi (интерфейсы, радио, регистрация); Interfaces
+  (+Networks); Bridge (Bridge, Ports, VLANs); PPP; IP → Addresses, Routes,
+  Firewall (Filter, NAT, Connections, Zones), DHCP Server (DHCP, Leases,
+  DHCPv6 Bindings), DNS (Settings, Static); IPv6 → Addresses, Routes; Log;
+  Tools → Ping, Traceroute, Torch; New Terminal — командная строка в стиле
+  RouterOS (меню, print/add/set/remove/enable/disable/comment, find, export,
+  Tab, `?`, история); New Shell — ash через ttyd. Мгновенное применение,
+  Undo/Redo, Safe Mode со сторожем и перехватом другой сессией, горячие
+  клавиши, контекстные меню, выбор колонок, меню Windows, светлая и тёмная тема.
 - **Проверено:**
-  - юнит-тесты моделей на данных, снятых с OpenWrt 25.12.5;
+  - юнит-тесты моделей, CLI и инструментов на данных, снятых с OpenWrt 25.12.5;
   - e2e в preview с отдельным mock-роутером на каждый вход (Chromium, WebKit);
   - VM 25.12.5 и 24.10.8 с настоящими пакетами: бэкенд через JSON-RPC с
-    сессией и ACL, правки через интерфейс с проверкой в ядре и nft, откат
-    сторожем по таймауту, установка, удаление и переустановка пакета;
+    сессией и ACL, правки через интерфейс и CLI с проверкой в ядре, nft,
+    dnsmasq и hostapd, откат сторожем по таймауту (в том числе после смены
+    адреса LAN через Quick Set, когда консоль теряет роутер), перехват Safe
+    Mode второй сессией, установка, удаление и переустановка пакета;
+  - WiFi — на радио mac80211_hwsim в VM 25.12 (точка доступа и клиент);
   - терминал через ttyd на 25.12.
 - **Что выяснилось по ходу:**
   - `fw4 check` возвращает 0 даже для ошибочного правила (секция просто
@@ -29,10 +37,20 @@
   - тип секции `bridge-vlan` содержит дефис: плагин сначала отвергал его,
     нашлось на VM;
   - busybox `ip` на 24.10 не печатает протокол, поэтому маршрут IPv6 из
-    `ip6assign` там помечается как подключённый (C).
-- **Не сделано (следующие этапы):** Wireless, PPP, DNS, аренды DHCPv6, Quick
-  Set, Tools (Ping, Torch), CLI в стиле RouterOS, перехват Safe Mode другой
-  сессией, проверка на реальном NanoPi.
+    `ip6assign` там помечается как подключённый (C);
+  - внутри rpcd чтение из `popen()` возвращает только то, что уже пришло, —
+    команды пишут вывод во временный файл;
+  - rpcd обслуживает вызовы по одному: ping или traceroute внутри плагина
+    останавливал все окна на время таймаута, поэтому они работают фоновыми
+    заданиями (`libexec/routerdeck/diag`);
+  - busybox ping ничего не печатает о потерянном ответе, поэтому задание
+    запускает по одному запросу на процесс;
+  - `network.wireless` отвергает аргумент сессии, который добавляет uhttpd,
+    поэтому состояние WiFi читается через `luci-rpc getWirelessDevices`;
+  - окно, открываясь, через два кадра забирало фокус у поля, в которое уже
+    начали вводить, — ввод терялся; нашлось на WebKit в e2e.
+- **Не сделано:** проверка на реальном NanoPi (нужны настоящий роутер и
+  доступ к нему). Что проверить там — в конце раздела «Проверка».
 
 ## Зачем
 
@@ -228,7 +246,7 @@ JSON-RPC запрос раз в секунду. Свёрнутые окна и �
 | **Firewall → NAT** | `redirect` (dst-nat/src-nat), `nat`, masquerade зон | X; masq зоны — строка D, её переключатель меняет `masq` зоны | У masquerade в fw4 нет счётчика |
 | **Firewall → Connections** | conntrack | — | Только чтение, виртуализированный список |
 | Firewall → **Zones** (только OpenWrt) | `zone` + `forwarding` | X (`enabled 0`) | Без зон fw4 не настроить; forwarding редактируется в окне зоны |
-| **IP → DHCP Server** (вкладки DHCP, Leases) | `dhcp`-секции по сетям; аренды = динамические + `host` | D, X (`enable 0` у `host`, `ignore 1` у сервера) | Кнопка Make Static создаёт `host` с mac/ip/name. Статус: bound / waiting. Аренды DHCPv6 — позже |
+| **IP → DHCP Server** (вкладки DHCP, Leases) | `dhcp`-секции по сетям; аренды = динамические + `host` | D, X (`enable 0` у `host`, `ignore 1` у сервера) | Кнопка Make Static создаёт `host` с mac/ip/name. Статус: bound / waiting. Аренды DHCPv6 — вкладка DHCPv6 Bindings |
 | **Log** | syslog | цвет по priority | Как в RouterOS, хранится 1000 строк; колонки Time, Topics (facility, priority, программа), Message |
 | **New Terminal** | iframe на ttyd (`http(s)://<host>:7681`) | — | ttyd спрашивает логин ещё раз (`/bin/login`). Если UI открыт по https, а ttyd по http, будет mixed content — нужен `ssl` у ttyd |
 
@@ -383,8 +401,21 @@ Routes, Firewall и DHCP/Log можно делать параллельно, к�
   - Safe Mode откатывает изменения после закрытия вкладки;
   - если LuCI ждёт подтверждения apply, `routerdeck.apply` отвечает «занято»;
   - окно Terminal открывает ttyd (ttyd ставится в VM через WAN).
-- **Ручная проверка:** сменить IP LAN в Safe Mode и убедиться, что через 60 с
-  доступ вернулся по старому адресу.
+- **Ручная проверка** (сделана автоматически на VM: смена адреса LAN через
+  Quick Set в Safe Mode, откат через 120 с).
+- **На настоящем NanoPi** (не сделано, нужен доступ к устройству):
+  - установить оба пакета для своей архитектуры (`scripts/package.sh` собирает
+    `all`-пакеты, их можно ставить как есть) и открыть `/routerdeck/`;
+  - Interfaces: настоящие порты, скорость и Tx/Rx под нагрузкой, мост и VLAN
+    на встроенном коммутаторе или DSA;
+  - WiFi на реальном радио: смена SSID, пароля и канала, клиенты в
+    Registration, Quick Set → WiFi;
+  - Safe Mode: сменить адрес LAN или правило, отрезающее доступ, по проводу и
+    по WiFi, убедиться в откате через 120 с и в перехвате из новой вкладки;
+  - PPPoE с настоящим провайдером (если есть), Torch под реальным трафиком,
+    Ping и Traceroute в интернет;
+  - нагрузка на CPU от опроса (`top` при открытых Interfaces, Torch и Log);
+  - HTTPS (`uhttpd` с сертификатом) и ttyd с SSL для New Shell.
 
 ## Риски и что проверить в первую очередь
 

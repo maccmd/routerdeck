@@ -168,6 +168,13 @@ be extended, and blocks all commits while armed. Safe Mode keeps its own
 snapshot; the `routerdeck-safemode` procd service restores it when the client's
 heartbeats stop, so a pending rollback survives an rpcd reload.
 
+Ping and Traceroute run as background jobs (`/usr/libexec/routerdeck/diag`)
+because rpcd handles one call at a time; the plugin's `diag` method starts,
+reads and stops them. Torch computes per-connection rates in the client from
+two connection-tracking samples. The command line (`console/src/cli`) parses
+RouterOS-style commands and runs them through the same window models, so a
+command and the matching window produce identical operations.
+
 See [RouterDeck Console](console.md) for behaviour, the object mapping and limits.
 
 ## Packaging and licensing

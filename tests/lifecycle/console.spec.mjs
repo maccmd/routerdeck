@@ -8,7 +8,7 @@ const series = port === '8089' ? '24.10' : '25.12';
 const ssh = (command, input) => execFileSync('sh', ['scripts/vm-ssh.sh', command], { encoding: input ? undefined : 'utf8', input }).toString().trim();
 const password = (await readFile('.cache/vm/password', 'utf8')).trim();
 const manager = series === '25.12' ? { add: 'apk add --allow-untrusted', del: 'apk del' } : { add: 'opkg install', del: 'opkg remove' };
-const FILES = ['/www/routerdeck/index.html', '/usr/share/rpcd/ucode/routerdeck', '/usr/share/rpcd/acl.d/routerdeck-console.json', '/usr/share/ucode/routerdeck/core.uc', '/usr/libexec/routerdeck/safemode-watchdog', '/etc/init.d/routerdeck-safemode'];
+const FILES = ['/www/routerdeck/index.html', '/usr/share/rpcd/ucode/routerdeck', '/usr/share/rpcd/acl.d/routerdeck-console.json', '/usr/share/ucode/routerdeck/core.uc', '/usr/libexec/routerdeck/safemode-watchdog', '/usr/libexec/routerdeck/diag', '/etc/init.d/routerdeck-safemode'];
 
 async function install() {
  const folder = `dist/packages/${series}`;
@@ -35,7 +35,12 @@ test('install, use, remove and reinstall the console package', async ({ page }) 
  await expect(page.getByRole('dialog', { name: 'Interface List' }).locator('.rd-grid-row').filter({ hasText: 'br-lan' })).toBeVisible();
  await page.getByRole('button', { name: 'Safe Mode', exact: true }).click();
  await expect(page.getByRole('button', { name: 'Safe Mode', exact: true })).toHaveAttribute('aria-pressed', 'true');
- expect(ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/safemode-watchdog' || echo none")).toMatch(/^\d+$/);
+ // procd starts the watchdog instance asynchronously.
+ await expect.poll(() => ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/safemode-watchdog' || echo none")).toMatch(/^\d+$/);
+ // A running ping job, which must end with the package.
+ for (const file of ['/usr/libexec/routerdeck/diag', '/usr/libexec/routerdeck/safemode-watchdog', '/etc/init.d/routerdeck-safemode']) expect(ssh(`[ -x ${file} ] && echo executable || echo not`)).toBe('executable');
+ expect(JSON.parse(ssh(`ubus call routerdeck diag '{"action":"start","tool":"ping","host":"127.0.0.1"}'`)).ok).toBe(true);
+ await expect.poll(() => ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/diag' || echo none")).toMatch(/^\d+$/);
 
  // Removing the package mid-Safe Mode keeps the configuration as it is.
  ssh(`${manager.del} routerdeck-console`);
@@ -44,6 +49,7 @@ test('install, use, remove and reinstall the console package', async ({ page }) 
  expect(ssh('ubus list routerdeck 2>&1 || true')).toContain('Not found');
  // Anchored, so pgrep does not match the ssh shell running this very command.
  expect(ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/safemode-watchdog' || echo none")).toBe('none');
+ await expect.poll(() => ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/diag' || echo none"), { timeout: 10000 }).toBe('none');
  expect(ssh('sha256sum /etc/config/network /etc/config/firewall /etc/config/dhcp /etc/config/rpcd /etc/config/uhttpd')).toBe(configs);
 
  await install();

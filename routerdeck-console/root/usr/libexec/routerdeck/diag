@@ -28,7 +28,8 @@ function write(entry) {
 
 // The plugin touches `seen` on every read.
 function alive() {
-	if (access(dir + '/stop'))
+	// Stopped, or the package was removed with /var/run/routerdeck.
+	if (access(dir + '/stop') || !access(dir))
 		return false;
 	let seen = stat(dir + '/seen')?.mtime ?? started;
 	return time() - seen <= IDLE && time() - started <= LIMIT;

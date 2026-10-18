@@ -66,7 +66,10 @@ test('a LAN address change under Safe Mode is rolled back when the console loses
  await page.getByRole('menuitem', { name: 'Quick Set', exact: true }).click();
  const quick = win(page, 'Quick Set');
  await quick.getByRole('tab', { name: 'Local Network' }).click();
- const moved = original.lan.replace(/^(\d+\.\d+)\.\d+\.1\//, '$1.199.1/');
+ // 24.10 keeps the legacy ipaddr + netmask form; the field shows CIDR either way.
+ const current = await quick.getByLabel('IP Address:').inputValue();
+ const moved = current.replace(/^(\d+\.\d+)\.\d+\./, '$1.199.');
+ expect(moved).not.toBe(current);
  await quick.getByLabel('IP Address:').fill(moved);
  await quick.getByRole('button', { name: 'Apply' }).click();
  await expect(page.getByRole('toolbar', { name: 'Session' })).toContainText(`Continue at http://${moved.split('/')[0]}/routerdeck/`);

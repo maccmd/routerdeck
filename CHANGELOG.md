@@ -26,6 +26,19 @@
   their pool and advertisement) and IPv6 > Routes (kernel and `route6`), and a
   Bridge window with bridges, ports (PVID, tagged VLANs) and bridge VLANs.
 - Accept UCI section types with dashes such as `bridge-vlan` in the plugin.
+- Add IP > DNS (dnsmasq settings and static A/AAAA/CNAME entries), DHCPv6
+  bindings with Make Static, and Safe Mode takeover by another session.
+- Add WiFi (interfaces, radios, registration table) and PPP client windows.
+- Add Tools > Ping, Traceroute and Torch; Ping and Traceroute run as jobs
+  outside rpcd so a slow probe never stalls other calls.
+- Add Quick Set: Internet connection and NAT, LAN address and DHCP range, WiFi
+  name and password, and identity as one change and one Undo step.
+- New Terminal is now a RouterOS-style command line over the window models
+  (print/find/add/set/remove/enable/disable/comment, export, ping, traceroute,
+  undo, Tab completion, `?` help, history, Ctrl+X Safe Mode); the ttyd shell
+  moved to New Shell.
+- Fix focus being taken from a field the user already typed in when a window
+  opens, and quick successive form edits overwriting each other.
 
 ### Navigation and windows
 
