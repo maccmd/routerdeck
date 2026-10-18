@@ -22,6 +22,10 @@
 - Add Safe Mode with a procd watchdog that restores the snapshot when the
   console stops sending heartbeats, a ttyd terminal window, the Windows menu,
   a theme switch and RouterOS keyboard shortcuts.
+- Add IPv6 > Addresses (static, prefix-assigned, DHCPv6 and link-local, with
+  their pool and advertisement) and IPv6 > Routes (kernel and `route6`), and a
+  Bridge window with bridges, ports (PVID, tagged VLANs) and bridge VLANs.
+- Accept UCI section types with dashes such as `bridge-vlan` in the plugin.
 
 ### Navigation and windows
 

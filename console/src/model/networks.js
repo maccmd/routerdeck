@@ -68,6 +68,7 @@ export default {
    { id: 'auto', label: 'Bring up on boot', type: 'bool' },
    { id: 'zone', label: 'Firewall Zone', type: 'select', allowEmpty: true, options: zoneOptions(data['uci:firewall']) },
    { id: 'gateway', label: 'Gateway', type: 'text', visible: values => protocol(values) === 'static', placeholder: 'none' },
+   { id: 'ip6assign', label: 'IPv6 Assignment Length', type: 'number', visible: values => protocol(values) === 'static', placeholder: 'disabled' },
    { id: 'dns', label: 'DNS Servers', type: 'list', visible: values => ['static', 'dhcp', 'pppoe'].includes(protocol(values)) },
    { id: 'hostname', label: 'Hostname to Send', type: 'text', visible: values => protocol(values) === 'dhcp' },
    { id: 'peerdns', label: 'Use Peer DNS', type: 'bool', visible: values => ['dhcp', 'dhcpv6', 'pppoe'].includes(protocol(values)) },
@@ -79,11 +80,11 @@ export default {
   const section = sections(data['uci:network'], 'interface').find(item => item['.name'] === row.section) ?? {};
   return {
    name: row.cells.name, proto: section.proto ?? 'none', device: section.device ?? '', auto: truthy(section.auto, true),
-   zone: zonesOf(data['uci:firewall'], row.cells.name)[0] ?? '', gateway: section.gateway ?? '', dns: list(section.dns),
+   zone: zonesOf(data['uci:firewall'], row.cells.name)[0] ?? '', gateway: section.gateway ?? '', ip6assign: section.ip6assign ?? '', dns: list(section.dns),
    hostname: section.hostname ?? '', peerdns: truthy(section.peerdns, true), username: section.username ?? '', password: section.password ?? ''
   };
  },
- defaults: () => ({ name: '', proto: 'static', device: '', auto: true, zone: '', gateway: '', dns: [], hostname: '', peerdns: true, username: '', password: '' }),
+ defaults: () => ({ name: '', proto: 'static', device: '', auto: true, zone: '', gateway: '', ip6assign: '', dns: [], hostname: '', peerdns: true, username: '', password: '' }),
 
  // For an existing network only the fields edited in the window are written,
  // so untouched options keep their exact form in /etc/config/network.
@@ -94,10 +95,11 @@ export default {
    if (sections(data['uci:network'], 'interface').some(section => section['.name'] === name)) invalid('name', `${name} already exists`);
   }
   if (values.gateway && !isIPv4(values.gateway)) invalid('gateway', 'Enter an IPv4 gateway address');
+  if (values.ip6assign && !(/^\d+$/.test(values.ip6assign) && values.ip6assign >= 48 && values.ip6assign <= 64)) invalid('ip6assign', 'Use a prefix length from 48 to 64, or leave it empty');
   for (const server of values.dns ?? []) if (!isIPv4(server) && !server.includes(':')) invalid('dns', `${server} is not an IP address`);
   const options = compact({
    proto: values.proto, device: values.device, auto: values.auto ? '' : '0',
-   gateway: values.proto === 'static' ? values.gateway : '', dns: values.dns ?? [],
+   gateway: values.proto === 'static' ? values.gateway : '', ip6assign: values.proto === 'static' ? values.ip6assign : '', dns: values.dns ?? [],
    hostname: values.proto === 'dhcp' ? values.hostname : '', peerdns: ['dhcp', 'dhcpv6', 'pppoe'].includes(values.proto) && !values.peerdns ? '0' : '',
    username: values.proto === 'pppoe' ? values.username : '', password: values.proto === 'pppoe' ? values.password : ''
   });

@@ -24,7 +24,9 @@ function ListControl({ id, value, onChange, disabled }) {
  );
 }
 
-export function Field({ field, value, values, onChange, error, disabled }) {
+export function Field({ field: spec, value, values, onChange, error, disabled }) {
+ // Options may depend on other fields, e.g. the ports of the chosen bridge.
+ const field = typeof spec.options === 'function' ? { ...spec, options: spec.options(values) } : spec;
  const id = 'rd-field-' + field.id + '-' + field.key;
  const describedBy = error ? id + '-error' : undefined;
  let control;

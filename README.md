@@ -27,8 +27,8 @@ downloadable packages. Build current source to try them; see the
   bookmarks. Windows are now built into the theme, without a separate menu page.
 - **`routerdeck-console`**, experimental and separate from LuCI: a windowed
   console at `/routerdeck/`, modelled on desktop router tools, that talks to rpcd
-  over `/ubus`. Interfaces, addresses, routes, firewall, DHCP and the log are live
-  object lists; changes apply at once with Undo/Redo and Safe Mode rollback; a
+  over `/ubus`. Interfaces, bridges and VLANs, IPv4 and IPv6 addresses and routes,
+  firewall, DHCP and the log are live object lists; changes apply at once with Undo/Redo and Safe Mode rollback; a
   terminal uses ttyd. See [RouterDeck Console](docs/console.md). Its bundle
   includes Preact (MIT).
 - Bootstrap remains installed. Installing RouterDeck registers it without

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const captured = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/router.json', import.meta.url), 'utf8'));
 const NAME = /^[A-Za-z0-9_]+$/;
+const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
 const CONFIGS = ['network', 'firewall', 'dhcp'];
 const clone = value => structuredClone(value);
@@ -15,6 +16,11 @@ function initialConfigs() {
  const network = clone(captured['uci:network']), firewall = clone(captured['uci:firewall']), dhcp = clone(captured['uci:dhcp']);
  network.lan.ipaddr = '192.168.88.1/24';
  network.static_lab = section('route', 'static_lab', 20, { interface: 'lan', target: '10.10.0.0/16', gateway: '192.168.88.2', comment: 'Lab network behind the test switch' });
+ network.lan.ip6addr = ['fd00:88::1/64'];
+ network.static_lab6 = section('route6', 'static_lab6', 21, { interface: 'lan', target: '2001:db8:100::/48', gateway: 'fd00:88::2', comment: 'Lab IPv6 prefix' });
+ network.cfg1592bd = section('device', 'cfg1592bd', 22, { name: 'br-iot', type: 'bridge', ports: ['eth2', 'eth3'], igmp_snooping: '1' }, true);
+ network.cfg1692bd = section('bridge-vlan', 'cfg1692bd', 23, { device: 'br-iot', vlan: '10', ports: ['eth2:u*', 'eth3:t'] }, true);
+ network.cfg1792bd = section('bridge-vlan', 'cfg1792bd', 24, { device: 'br-iot', vlan: '20', ports: ['eth3:t'], comment: 'Cameras' }, true);
  firewall.cfg1192bd = section('redirect', 'cfg1192bd', 20, { name: 'Web server', target: 'DNAT', src: 'wan', dest: 'lan', proto: 'tcp', src_dport: '8080', dest_ip: '192.168.88.10', dest_port: '80' }, true);
  firewall.cfg1292bd = section('rule', 'cfg1292bd', 21, { name: 'Block-Telnet', src: 'lan', dest: 'wan', proto: 'tcp', dest_port: '23', target: 'REJECT', enabled: '0' }, true);
  dhcp.cfg1392bd = section('host', 'cfg1392bd', 20, { name: 'nas', mac: '52:54:00:aa:10:01', ip: '192.168.88.10', dns: '1' }, true);
@@ -68,6 +74,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    if (!CONFIGS.includes(op?.config)) return { ok: false, error: 'invalid', message: `Configuration ${op?.config} cannot be changed here` };
    for (const key of Object.keys(op.values ?? {})) if (!NAME.test(key)) return { ok: false, error: 'invalid', message: `Invalid value for ${key}` };
    if (op.op === 'add') {
+    if (typeof op.type !== 'string' || !TYPE.test(op.type)) return { ok: false, error: 'invalid', message: 'Invalid section type' };
     const name = op.name ?? `cfg${(serial++).toString(16).padStart(2, '0')}92bd`;
     if (op.name && (!NAME.test(op.name) || values[op.name])) return { ok: false, error: 'exists', message: `${op.name} already exists` };
     values[name] = section(op.type, name, Math.max(-1, ...Object.values(values).map(item => item['.index'])) + 1, {}, !op.name);
@@ -173,6 +180,8 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
 
  /* Runtime state derived from configuration and time. */
 
+ const LINK_LOCAL = { 'br-lan': 'fe80::5054:ff:fe12:3456', eth1: 'fe80::5054:ff:fe12:3457', 'br-iot': 'fe80::5054:ff:fe12:3460' };
+
  function devices() {
   const t = seconds();
   const traffic = (base, rate) => Math.floor(base + rate * t + rate * 4 * Math.sin(t / 7));
@@ -186,6 +195,9 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    eth0: make('eth0', 'ethernet', '52:54:00:12:34:56', 1_203_456_789, 9_234_567_890, { master: 'br-lan' }),
    eth1: make('eth1', 'ethernet', '52:54:00:12:34:57', 9_812_345_678, 1_234_567_890),
    'br-lan': make('br-lan', 'bridge', '52:54:00:12:34:56', 1_103_456_789, 9_034_567_890, { bridge: true, ports: ['eth0'] }),
+   eth2: make('eth2', 'ethernet', '52:54:00:12:34:58', 45_678_901, 12_345_678, { master: 'br-iot' }),
+   eth3: make('eth3', 'ethernet', '52:54:00:12:34:59', 23_456_789, 34_567_890, { master: 'br-iot' }),
+   'br-iot': make('br-iot', 'bridge', '52:54:00:12:34:60', 67_890_123, 45_678_901, { bridge: true, ports: ['eth2', 'eth3'] }),
    lo: { ...make('lo', 'loopback', '00:00:00:00:00:00', 12_345_678, 12_345_678), devtype: undefined, type: 772, flags: { up: true, loopback: true } },
    wg0: { ...make('wg0', 'wireguard', '', 34_567_890, 23_456_789), mtu: 1420 }
   };
@@ -197,6 +209,24 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    const config = configured.find(item => item.name === name);
    if (config?.mtu) device.mtu = Number(config.mtu);
    if (config?.macaddr) device.mac = config.macaddr;
+   if (config?.type === 'bridge') { device.bridge = true; device.ports = [].concat(config.ports ?? []).filter(port => result[port]); }
+   device.ip6addrs = LINK_LOCAL[name] ? [{ address: LINK_LOCAL[name], netmask: 'ffff:ffff:ffff:ffff::' }] : [];
+  }
+  return result;
+ }
+
+ // network.device status, with the bridge fields the Bridge window reads.
+ function netdev() {
+  const result = {};
+  for (const [name, device] of Object.entries(devices())) {
+   const entry = { present: true, type: device.bridge ? 'bridge' : 'Network device', up: device.up, carrier: true, devtype: device.devtype, mtu: device.mtu, macaddr: device.mac };
+   if (device.bridge) {
+    const vlans = sectionsOf('network', 'bridge-vlan').filter(vlan => vlan.device === name);
+    entry['bridge-members'] = device.ports;
+    entry['bridge-attributes'] = { stp: false, igmp_snooping: false, vlan_filtering: vlans.length > 0 };
+    if (vlans.length) entry['bridge-vlans'] = vlans.map(vlan => ({ id: Number(vlan.vlan), local: vlan.local !== '0', ports: [].concat(vlan.ports ?? []) }));
+   }
+   result[name] = entry;
   }
   return result;
  }
@@ -208,6 +238,12 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    const device = item.device ?? name;
    const live = { interface: name, up: true, pending: false, available: true, autostart: item.auto !== '0', dynamic: false, uptime, l3_device: device, proto: item.proto ?? 'none', device, 'ipv4-address': [], 'ipv6-address': [], route: [], 'dns-server': [] };
    if (item.proto === 'static') live['ipv4-address'] = [].concat(item.ipaddr ?? []).map(entry => ({ address: entry.split('/')[0], mask: Number(entry.split('/')[1] ?? 32) }));
+   if (item.proto === 'static') live['ipv6-address'] = [].concat(item.ip6addr ?? []).map(entry => ({ address: entry.split('/')[0], mask: Number(entry.split('/')[1] ?? 128) }));
+   live['ipv6-prefix-assignment'] = item.ip6assign ? [{ address: 'fd50:b8c1:5fb2::', mask: Number(item.ip6assign), 'local-address': { address: 'fd50:b8c1:5fb2::1', mask: Number(item.ip6assign) } }] : [];
+   if (item.proto === 'dhcpv6') {
+    live['ipv6-address'] = [{ address: '2001:db8:42::1234', mask: 128, preferred: 3600, valid: 7200 }];
+    live['ipv6-prefix'] = [{ address: '2001:db8:4200::', mask: 56 }];
+   }
    if (item.proto === 'dhcp') {
     live['ipv4-address'] = [{ address: '203.0.113.42', mask: 24 }];
     live.route = [{ target: '0.0.0.0', mask: 0, nexthop: '203.0.113.1', source: '203.0.113.42/32' }];
@@ -238,6 +274,25 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    if (route.type && route.type !== 'unicast') entry.type = route.type;
    result.push(entry);
   }
+  return result;
+ }
+
+ function routes6() {
+  const live = ifaces(), byName = new Map(live.map(item => [item.interface, item.l3_device]));
+  const result = [{ dst: 'default', from: '2001:db8:42::1234', gateway: 'fe80::1', dev: 'eth1', protocol: 'static', metric: 512, flags: [], pref: 'medium' }];
+  for (const item of live) {
+   for (const address of item['ipv6-address']) if (item.proto === 'static') result.push({ dst: address.address.replace(/::?[0-9a-f]*$/i, '::') + '/' + address.mask, dev: item.l3_device, protocol: 'kernel', metric: 256, flags: [] });
+   for (const assignment of item['ipv6-prefix-assignment']) result.push({ dst: 'fd50:b8c1:5fb2::/64', dev: item.l3_device, protocol: 'static', metric: 1024, flags: [] }, { type: 'unreachable', dst: `${assignment.address}/48`, dev: 'lo', protocol: 'static', metric: 2147483647, flags: [] });
+  }
+  for (const name of ['br-lan', 'eth1', 'br-iot']) result.push({ dst: 'fe80::/64', dev: name, protocol: 'kernel', metric: 256, flags: [] });
+  for (const route of sectionsOf('network', 'route6').filter(item => item.disabled !== '1')) {
+   const entry = { dst: route.target, dev: byName.get(route.interface), protocol: 'static', metric: Number(route.metric ?? 1024), flags: [] };
+   if (route.gateway) entry.gateway = route.gateway;
+   if (route.table && route.table !== 'main') entry.table = route.table;
+   if (route.type && route.type !== 'unicast') entry.type = route.type;
+   result.push(entry);
+  }
+  result.push({ type: 'local', dst: '::1', dev: 'lo', table: 'local', protocol: 'kernel', metric: 0, flags: [] }, { type: 'local', dst: 'fd50:b8c1:5fb2::1', dev: 'br-lan', table: 'local', protocol: 'kernel', metric: 0, flags: [] });
   return result;
  }
 
@@ -291,7 +346,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  return {
   watchdog,
   uci: config => configs[config] ? clone(configs[config]) : null,
-  devices, ifaces, routes4, counters, conntrack, log, leases,
+  devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases,
   history: history_, apply, undo: () => step('undo'), redo: () => step('redo'), safemode,
   terminal: () => ({ installed: false, running: false, port: 7681, ssl: false, interface: '@lan', url_override: null })
  };

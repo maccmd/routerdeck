@@ -942,5 +942,235 @@
  "leases": {
   "dhcp_leases": [],
   "dhcp6_leases": []
+ },
+ "routes6": [
+  {
+   "dst": "default",
+   "from": "fec0::/64",
+   "gateway": "fe80::2",
+   "dev": "eth1",
+   "protocol": "static",
+   "metric": 512,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "dst": "fd50:b8c1:5fb2::/64",
+   "dev": "br-lan",
+   "protocol": "static",
+   "metric": 1024,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "unreachable",
+   "dst": "fd50:b8c1:5fb2::/48",
+   "dev": "lo",
+   "protocol": "static",
+   "metric": 2147483647,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "dst": "fe80::/64",
+   "dev": "eth1",
+   "protocol": "kernel",
+   "metric": 256,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "dst": "fe80::/64",
+   "dev": "br-lan",
+   "protocol": "kernel",
+   "metric": 256,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "dst": "fec0::/64",
+   "dev": "eth1",
+   "protocol": "static",
+   "metric": 256,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "unreachable",
+   "dst": "fec0::/64",
+   "dev": "lo",
+   "protocol": "static",
+   "metric": 2147483647,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "local",
+   "dst": "::1",
+   "dev": "lo",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "anycast",
+   "dst": "fd50:b8c1:5fb2::",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "local",
+   "dst": "fd50:b8c1:5fb2::1",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "anycast",
+   "dst": "fe80::",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "anycast",
+   "dst": "fe80::",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "local",
+   "dst": "fe80::5054:ff:fe12:3456",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "local",
+   "dst": "fe80::5054:ff:fe12:3457",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "anycast",
+   "dst": "fec0::",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "local",
+   "dst": "fec0::5054:ff:fe12:3457",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 0,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "multicast",
+   "dst": "ff00::/8",
+   "dev": "eth1",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 256,
+   "flags": [],
+   "pref": "medium"
+  },
+  {
+   "type": "multicast",
+   "dst": "ff00::/8",
+   "dev": "br-lan",
+   "table": "local",
+   "protocol": "kernel",
+   "metric": 256,
+   "flags": [],
+   "pref": "medium"
+  }
+ ],
+ "netdev": {
+  "br-lan": {
+   "present": true,
+   "type": "bridge",
+   "up": true,
+   "carrier": true,
+   "devtype": "bridge",
+   "bridge-members": [
+    "eth0"
+   ],
+   "bridge-attributes": {
+    "stp": false,
+    "forward_delay": 8,
+    "priority": 32767,
+    "ageing_time": 0,
+    "hello_time": 1,
+    "max_age": 10,
+    "igmp_snooping": false,
+    "bridge_empty": false,
+    "multicast_querier": false,
+    "hash_max": 512,
+    "robustness": 2,
+    "query_interval": 12500,
+    "query_response_interval": 1000,
+    "last_member_interval": 100,
+    "vlan_filtering": false,
+    "stp_kernel": false
+   },
+   "mtu": 1500,
+   "macaddr": "52:54:00:12:34:56"
+  },
+  "eth0": {
+   "present": true,
+   "type": "Network device",
+   "up": true,
+   "carrier": true,
+   "devtype": "ethernet",
+   "mtu": 1500,
+   "macaddr": "52:54:00:12:34:56"
+  },
+  "eth1": {
+   "present": true,
+   "type": "Network device",
+   "up": true,
+   "carrier": true,
+   "devtype": "ethernet",
+   "mtu": 1500,
+   "macaddr": "52:54:00:12:34:57"
+  },
+  "lo": {
+   "present": true,
+   "type": "Network device",
+   "up": true,
+   "carrier": true,
+   "mtu": 65536,
+   "macaddr": "00:00:00:00:00:00"
+  }
  }
 }

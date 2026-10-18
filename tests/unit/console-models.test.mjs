@@ -171,3 +171,82 @@ test('reordering keeps sections of other types in place', () => {
  assert.deepEqual(reorderOps('firewall', values, ['d', 'b'], ['rule'])[0].sections, ['a', 'd', 'c', 'b']);
  assert.deepEqual(reorderOps('firewall', values, ['d'], ['rule'])[0].sections, ['a', 'd', 'c', 'b']);
 });
+
+test('IPv6 helpers canonicalize, validate and find networks', async () => {
+ const ip = await import('../../console/src/lib/ip.js');
+ assert.equal(ip.canonicalIPv6('2001:DB8:0:0:1:0:0:1'), '2001:db8::1:0:0:1');
+ assert.equal(ip.canonicalIPv6('1::2::3'), null);
+ assert.equal(ip.canonicalIPv6('2001:db8::1:2:3:4:5:6'), null);
+ assert.deepEqual(ip.parseCidr6('fd50:b8c1:5fb2::1/60'), { address: 'fd50:b8c1:5fb2::1', prefix: 60, network: 'fd50:b8c1:5fb2::', cidr: 'fd50:b8c1:5fb2::1/60', linkLocal: false });
+ assert.equal(ip.parseCidr6('fe80::1/64').linkLocal, true);
+ assert.equal(ip.prefixFromMask6('ffff:ffff:ffff:fff0::'), 60);
+ assert.ok(ip.addressKey('10.0.0.1') < ip.addressKey('::1') && ip.addressKey('fd00::/8') < ip.addressKey('fe80::/64'));
+});
+
+test('IPv6 addresses: static, pool, DHCPv6 and link-local', () => {
+ const input = data();
+ const rows = MODELS.addresses6.rows(input);
+ assert.deepEqual(rows.map(row => [row.cells.address, row.flags, row.cells.pool, row.cells.interface, row.cells.advertise]), [
+  ['fd50:b8c1:5fb2::1/60', 'DG', 'fd50:b8c1:5fb2::/60', 'lan (br-lan)', 'yes'],
+  ['fec0::5054:ff:fe12:3457/64', 'DG', '', 'wan6 (eth1)', ''],
+  ['fe80::5054:ff:fe12:3457/64', 'DL', '', 'eth1', ''],
+  ['fe80::5054:ff:fe12:3456/64', 'DL', '', 'br-lan', '']
+ ]);
+ const add = MODELS.addresses6.save({ address: 'FD00:88::1/64', interface: 'lan' }, null, input);
+ assert.deepEqual(add.ops, [{ op: 'set', config: 'network', section: 'lan', values: { ip6addr: ['fd00:88::1/64'] } }]);
+ rejects(() => MODELS.addresses6.save({ address: 'fd00:88::/64', interface: 'lan' }, null, input), 'address');
+ rejects(() => MODELS.addresses6.save({ address: 'fd00:88::1', interface: 'lan' }, null, input), 'address');
+ input['uci:network'].lan.ip6addr = ['fd00:88::1/64'];
+ rejects(() => MODELS.addresses6.save({ address: 'fd00:88:0::1/64', interface: 'lan' }, null, input), 'address');
+ const listed = MODELS.addresses6.rows(input).find(row => row.key === 'lan#0');
+ assert.equal(listed.flags, 'IG');
+ assert.deepEqual(MODELS.addresses6.remove([listed], input).ops[0].values, { ip6addr: [] });
+});
+
+test('IPv6 routes from the kernel and route6 sections', () => {
+ const input = data();
+ input['uci:network'].lab6 = { '.type': 'route6', '.name': 'lab6', '.index': 9, '.anonymous': false, interface: 'lan', target: '2001:db8:100::/48', gateway: 'FD50:B8C1:5FB2::2' };
+ input.routes6.push({ dst: '2001:db8:100::/48', gateway: 'fd50:b8c1:5fb2::2', dev: 'br-lan', protocol: 'static', metric: 1024, flags: [] });
+ const rows = MODELS.routes6.rows(input);
+ assert.equal(rows.find(row => row.key === 'lab6').flags, 'AS');
+ assert.equal(rows.find(row => row.key === 'lab6').cells.gateway, 'fd50:b8c1:5fb2::2');
+ const main = rows.filter(row => MODELS.routes6.filter.match(row, 'main'));
+ const flags = dst => main.filter(row => row.cells.dst === dst).map(row => row.flags);
+ assert.deepEqual(flags('::/0'), ['DA']);
+ assert.equal(main.find(row => row.cells.dst === '::/0').cells.prefsrc, 'fec0::/64');
+ assert.deepEqual(flags('fe80::/64'), ['DAC', 'DAC']);
+ assert.deepEqual(flags('fd50:b8c1:5fb2::/48'), ['DA']);
+ const save = MODELS.routes6.save({ ...MODELS.routes6.defaults(input), dst: '2001:DB8:200::/48', gateway: 'FE80:0:0::1', interface: 'wan6' }, null, input);
+ assert.deepEqual(save.ops[0], { op: 'add', config: 'network', type: 'route6', values: { target: '2001:db8:200::/48', gateway: 'fe80::1', interface: 'wan6', metric: null, table: null, type: null, source: null } });
+ rejects(() => MODELS.routes6.save({ ...MODELS.routes6.defaults(input), dst: '2001:db8::1/32', interface: 'wan6' }, null, input), 'dst');
+ rejects(() => MODELS.routes6.save({ ...MODELS.routes6.defaults(input), dst: '::/0', gateway: '10.0.0.1', interface: 'wan6' }, null, input), 'gateway');
+});
+
+test('bridges, ports and VLANs', async () => {
+ const { parseVlanPort } = await import('../../console/src/model/bridge.js');
+ const input = data();
+ const bridges = MODELS.bridges.rows(input);
+ assert.deepEqual(bridges.map(row => [row.name, row.flags, row.cells.ports, row.cells.vlan]), [['br-lan', 'R', 'eth0', '']]);
+ assert.equal(MODELS.bridges.removeBlocked(bridges, input), 'Bridge br-lan is used by network lan');
+ assert.deepEqual(MODELS.bridges.save({ ...MODELS.bridges.defaults(), name: 'br-iot', stp: true }, null, input).ops[0].values, { name: 'br-iot', type: 'bridge', mtu: null, macaddr: null, stp: '1', igmp_snooping: null, bridge_empty: '1' });
+
+ const ports = MODELS['bridge-ports'].rows(input);
+ assert.deepEqual(ports.map(row => [row.key, row.flags, row.cells.pvid]), [['br-lan:eth0', 'R', '']]);
+ assert.deepEqual(MODELS['bridge-ports'].save({ interface: 'eth1', bridge: 'br-lan' }, null, input).ops, [{ op: 'set', config: 'network', section: 'cfg030f15', values: { ports: ['eth0', 'eth1'] } }]);
+ rejects(() => MODELS['bridge-ports'].save({ interface: 'eth0', bridge: 'br-lan' }, null, input), 'interface');
+
+ input['uci:network'].v10 = { '.type': 'bridge-vlan', '.name': 'v10', '.index': 10, '.anonymous': false, device: 'br-lan', vlan: '10', ports: ['eth0:u*'] };
+ input['uci:network'].v20 = { '.type': 'bridge-vlan', '.name': 'v20', '.index': 11, '.anonymous': false, device: 'br-lan', vlan: '20', ports: ['eth0:t'] };
+ assert.deepEqual(parseVlanPort('eth0:t*'), { port: 'eth0', tagged: true, pvid: true });
+ assert.deepEqual(MODELS['bridge-ports'].rows(input).map(row => [row.cells.pvid, row.cells.tagged]), [['10', '20']]);
+ const vlans = MODELS['bridge-vlans'].rows(input);
+ assert.deepEqual(vlans.map(row => [row.cells.vlan, row.cells.tagged, row.cells.untagged, row.cells.pvid, row.flags]), [['10', '', 'eth0', 'eth0', 'I'], ['20', 'eth0', '', '', 'I']]);
+ rejects(() => MODELS['bridge-vlans'].save({ bridge: 'br-lan', vlan: '20', tagged: [], untagged: [], pvid: [], local: true }, null, input), 'vlan');
+ rejects(() => MODELS['bridge-vlans'].save({ bridge: 'br-lan', vlan: '30', tagged: ['eth0'], untagged: ['eth0'], pvid: [], local: true }, null, input), 'untagged');
+ rejects(() => MODELS['bridge-vlans'].save({ bridge: 'br-lan', vlan: '30', tagged: [], untagged: ['eth0'], pvid: ['eth0'], local: true }, null, input), 'pvid');
+ assert.deepEqual(MODELS['bridge-vlans'].save({ bridge: 'br-lan', vlan: '030', tagged: [], untagged: ['eth0'], pvid: [], local: false }, null, input).ops[0].values, { device: 'br-lan', vlan: '30', ports: ['eth0:u'], local: '0' });
+ // Removing a port also removes it from the bridge's VLANs.
+ const removed = MODELS['bridge-ports'].remove(MODELS['bridge-ports'].rows(input), input);
+ assert.deepEqual(removed.ops.map(op => [op.section, op.values.ports]), [['cfg030f15', []], ['v10', []], ['v20', []]]);
+ assert.deepEqual(MODELS.bridges.remove(MODELS.bridges.rows(input), input).ops.map(op => op.section), ['cfg030f15', 'v10', 'v20']);
+});

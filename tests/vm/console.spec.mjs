@@ -37,7 +37,7 @@ test('console logs in through real rpcd, opens windows and logs out', async ({ p
  expect(sessionCount()).toBe(before + 1);
 
  await page.getByRole('menuitem', { name:'Interfaces' }).click();
- await page.getByRole('menuitem', { name:'IP' }).click();
+ await page.getByRole('menuitem', { name:'IP', exact:true }).click();
  await page.getByRole('menuitem', { name:'Routes', exact:true }).click();
  await expect(page.getByRole('dialog', { name:'Route List', exact:true })).toBeVisible();
  await page.getByRole('menuitem', { name:'New Terminal' }).click();

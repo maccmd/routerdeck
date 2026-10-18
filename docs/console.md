@@ -55,6 +55,11 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | IP ▸ Firewall ▸ NAT | `redirect` (dst-nat), `nat` (src-nat, masquerade), zone masquerading | X, D zone masquerading | New src-nat rules are `nat` sections |
 | IP ▸ Firewall ▸ Connections | `/proc/net/nf_conntrack` | A assured, U unreplied | First 2048 entries |
 | IP ▸ Firewall ▸ Zones | `zone` and `forwarding` sections | X disabled | A zone used by rules cannot be removed |
+| Bridge ▸ Bridge | `device` sections of type bridge | R running, D dynamic, I not created yet | OpenWrt creates a bridge only once a network uses it; STP, IGMP snooping, MTU, MAC |
+| Bridge ▸ Ports | the bridge's `ports` list; members added at runtime | R running, I missing, D dynamic | PVID and tagged VLANs per port; removing a port also removes it from the bridge's VLANs |
+| Bridge ▸ VLANs | `bridge-vlan` sections | I not active | Tagged, untagged and PVID ports; one PVID per port; the first VLAN turns on VLAN filtering |
+| IPv6 ▸ Addresses | static `ip6addr`, addresses assigned from a prefix (`ip6assign`), DHCPv6/SLAAC, link-local | D dynamic, G global, L link-local, I not on the network | *From Pool* shows the assigned prefix; *Advertise* whether router advertisements are on |
+| IPv6 ▸ Routes | kernel IPv6 routes and `route6` sections | X, D, A, C, S | Source-specific routes show their source prefix |
 | IP ▸ DHCP Server ▸ DHCP | `dhcp` sections | X ignored | Address pool from the network's first address |
 | IP ▸ DHCP Server ▸ Leases | active DHCPv4 leases and `host` sections | X disabled, D dynamic | *Make Static* reserves a dynamic lease. A lease does not prove a client is online |
 | Log | logd (`log read`), `logread` fallback | — | Last 1000 lines, follows new entries |
@@ -135,8 +140,7 @@ needs SSL, or the browser blocks the embedded terminal.
 ## Known limitations
 
 - Desktop browsers only; on narrow screens every window fills the work area.
-- IPv4 only in Addresses and Routes; IPv6 windows, Bridge ports/VLAN
-  filtering, wireless, PPP, DNS, Quick Set, Tools (Ping, Torch) and a
+- Wireless, PPP, DNS, Quick Set, Tools (Ping, Torch), DHCPv6 leases and a
   RouterOS-style CLI are not implemented.
 - fw4 resets rule counters whenever the firewall reloads; rules sharing a name
   show no counters, because nftables reports them under that one name.

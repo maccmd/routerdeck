@@ -22,7 +22,9 @@ import {
 
 const VERSION = '0.1.0';
 const API = 1;
+// UCI section and option names allow [A-Za-z0-9_]; section types also allow '-' (bridge-vlan).
 const NAME = /^[A-Za-z0-9_]+$/;
+const TYPE = /^[A-Za-z0-9_-]+$/;
 const FACILITIES = [ 'kern', 'user', 'mail', 'daemon', 'auth', 'syslog', 'lpr', 'news', 'uucp', 'cron', 'authpriv', 'ftp' ];
 const SEVERITIES = [ 'emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info', 'debug' ];
 const ROUTE_TYPES = [ 'local', 'broadcast', 'multicast', 'throw', 'unreachable', 'prohibit', 'blackhole', 'nat', 'anycast' ];
@@ -311,7 +313,7 @@ function stage(ctx, ops) {
 
 		let section;
 		if (op.op == 'add') {
-			if (type(op.type) != 'string' || !match(op.type, NAME))
+			if (type(op.type) != 'string' || !match(op.type, TYPE))
 				return failure('invalid', 'Invalid section type');
 			if (op.name != null) {
 				if (type(op.name) != 'string' || !match(op.name, NAME) || ctx.get(config, op.name) != null)

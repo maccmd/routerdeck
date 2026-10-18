@@ -41,7 +41,7 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => expect(page.consoleErrors ?? []).toEqual([]));
 
 async function openIp(page, label) {
- await page.getByRole('menuitem', { name: 'IP' }).click();
+ await page.getByRole('menuitem', { name: 'IP', exact: true }).click();
  await page.getByRole('menuitem', { name: label, exact: true }).click();
 }
 

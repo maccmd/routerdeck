@@ -42,6 +42,8 @@ export const SOURCES = {
  devices: [devices, 1000],
  ifaces: [() => client.call('network.interface', 'dump').then(reply => reply?.interface ?? []), 2000],
  routes4: [() => client.call('routerdeck', 'routes', { family: 4 }).then(reply => reply?.routes ?? []), 3000],
+ routes6: [() => client.call('routerdeck', 'routes', { family: 6 }).then(reply => reply?.routes ?? []), 3000],
+ netdev: [() => client.call('network.device', 'status').then(reply => reply ?? {}), 3000],
  counters: [() => client.call('routerdeck', 'fw_counters'), 2000],
  conntrack: [() => client.call('routerdeck', 'conntrack', { limit: 2048 }), 2000],
  leases: [() => client.call('luci-rpc', 'getDHCPLeases'), 3000],

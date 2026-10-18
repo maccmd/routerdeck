@@ -3,8 +3,9 @@
 Статус на 2026-10-18: **этапы 0–4 выполнены** для первых окон. Описание для
 пользователей — в [console.md](console.md).
 
-- **Готово:** Interfaces (+Networks), IP → Addresses, Routes, Firewall (Filter,
-  NAT, Connections, Zones), DHCP Server (DHCP, Leases), Log, Terminal (ttyd);
+- **Готово:** Interfaces (+Networks), Bridge (Bridge, Ports, VLANs), IP →
+  Addresses, Routes, Firewall (Filter, NAT, Connections, Zones), DHCP Server
+  (DHCP, Leases), IPv6 → Addresses, Routes, Log, Terminal (ttyd);
   мгновенное применение, Undo/Redo, Safe Mode со сторожем, горячие клавиши,
   контекстные меню, выбор колонок, меню Windows, светлая и тёмная тема.
 - **Проверено:**
@@ -22,9 +23,16 @@
     требует `/etc/init.d/ttyd restart`;
   - на 24.10 адрес LAN задан старой формой `ipaddr` + `netmask`; консоль
     переводит её в список CIDR, а Undo возвращает исходный файл байт в байт.
-- **Не сделано (следующие этапы):** IPv6-окна, Bridge (порты, VLAN-фильтрация),
-  Wireless, PPP, DNS, Quick Set, Tools (Ping, Torch), CLI в стиле RouterOS,
-  перехват Safe Mode другой сессией, проверка на реальном NanoPi.
+  - netifd создаёт мост в ядре только когда его использует какая-то сеть, а
+    после удаления держит внутреннюю запись о нём до перезапуска; окно Bridge
+    показывает такой мост с флагом I;
+  - тип секции `bridge-vlan` содержит дефис: плагин сначала отвергал его,
+    нашлось на VM;
+  - busybox `ip` на 24.10 не печатает протокол, поэтому маршрут IPv6 из
+    `ip6assign` там помечается как подключённый (C).
+- **Не сделано (следующие этапы):** Wireless, PPP, DNS, аренды DHCPv6, Quick
+  Set, Tools (Ping, Torch), CLI в стиле RouterOS, перехват Safe Mode другой
+  сессией, проверка на реальном NanoPi.
 
 ## Зачем
 

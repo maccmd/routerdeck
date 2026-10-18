@@ -20,7 +20,7 @@ export class ActionError extends Error {
  }
 }
 
-const AFFECTED = ['history', 'safemode', 'routes4', 'counters', 'ifaces', 'devices', 'leases'];
+const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases'];
 const affected = key => key.startsWith('uci:') || AFFECTED.includes(key);
 
 // Services reload about a second after a commit; look again once they have.

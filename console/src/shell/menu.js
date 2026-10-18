@@ -4,11 +4,16 @@
 
 export const MENU = [
  { id: 'interfaces', label: 'Interfaces', icon: 'interfaces', window: 'interfaces' },
+ { id: 'bridge', label: 'Bridge', icon: 'bridge', window: 'bridge' },
  { id: 'ip', label: 'IP', icon: 'ip', children: [
   { id: 'ip-addresses', label: 'Addresses', window: 'ip-addresses' },
   { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
   { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' }
+ ] },
+ { id: 'ipv6', label: 'IPv6', icon: 'ipv6', children: [
+  { id: 'ipv6-addresses', label: 'Addresses', window: 'ipv6-addresses' },
+  { id: 'ipv6-routes', label: 'Routes', window: 'ipv6-routes' }
  ] },
  { id: 'log', label: 'Log', icon: 'log', window: 'log' },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },

@@ -56,7 +56,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
     version, api: 1, mock: true, user: sessions.get(sid)?.username,
     capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true }
    }],
-   routes: (args, sid) => [0, { routes: routerOf(sid).routes4() }],
+   routes: (args, sid) => [0, { routes: args.family === 6 ? routerOf(sid).routes6() : routerOf(sid).routes4() }],
    fw_counters: (args, sid) => [0, routerOf(sid).counters()],
    conntrack: (args, sid) => [0, routerOf(sid).conntrack()],
    log: (args, sid) => [0, routerOf(sid).log(args)],
@@ -76,6 +76,9 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   },
   'network.interface': {
    dump: (args, sid) => [0, { interface: routerOf(sid).ifaces() }]
+  },
+  'network.device': {
+   status: (args, sid) => [0, routerOf(sid).netdev()]
   }
  };
 

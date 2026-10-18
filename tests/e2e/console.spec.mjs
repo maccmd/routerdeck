@@ -22,7 +22,7 @@ const rect = async locator => {
  return { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) };
 };
 async function openFromIp(page, label) {
- await page.getByRole('menuitem', { name: 'IP' }).click();
+ await page.getByRole('menuitem', { name: 'IP', exact: true }).click();
  await page.getByRole('menuitem', { name: label, exact: true }).click();
 }
 async function drag(page, locator, dx, dy, { cancel = false } = {}) {
@@ -109,7 +109,9 @@ test('keyboard opens submenus and cycles windows', async ({ page }) => {
  await login(page);
  await page.getByRole('menuitem', { name: 'Interfaces' }).focus();
  await page.keyboard.press('ArrowDown');
- await expect(page.getByRole('menuitem', { name: 'IP' })).toBeFocused();
+ await expect(page.getByRole('menuitem', { name: 'Bridge' })).toBeFocused();
+ await page.keyboard.press('ArrowDown');
+ await expect(page.getByRole('menuitem', { name: 'IP', exact: true })).toBeFocused();
  await page.keyboard.press('ArrowRight');
  await expect(page.getByRole('menuitem', { name: 'Addresses', exact: true })).toBeFocused();
  await page.keyboard.press('ArrowDown');

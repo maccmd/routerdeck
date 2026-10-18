@@ -22,7 +22,7 @@ const win = (page, title) => page.getByRole('dialog', { name: title, exact: true
 const rows = scope => scope.locator('.rd-grid-row');
 const row = (scope, text) => rows(scope).filter({ hasText: text });
 async function openIp(page, label) {
- await page.getByRole('menuitem', { name: 'IP' }).click();
+ await page.getByRole('menuitem', { name: 'IP', exact: true }).click();
  await page.getByRole('menuitem', { name: label, exact: true }).click();
 }
 async function maximize(window) {
@@ -32,7 +32,7 @@ async function maximize(window) {
 test('lists show live router data with RouterOS-style flags and comments', async ({ page }, info) => {
  await page.getByRole('menuitem', { name: 'Interfaces' }).click();
  const interfaces = win(page, 'Interface List');
- await expect(rows(interfaces)).toHaveCount(5);
+ await expect(rows(interfaces)).toHaveCount(8);
  await expect(row(interfaces, 'wg0')).toHaveClass(/is-dynamic/);
  await expect(row(interfaces, 'eth0').locator('.is-flags')).toHaveText('RS');
  // Rates need two samples one second apart.
