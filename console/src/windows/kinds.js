@@ -4,18 +4,21 @@
 
 export const WINDOW_KINDS = {
  'quick-set': { title: 'Quick Set', size: { w: 600, h: 400 }, tabs: [{ label: 'Quick Set', model: 'quick-set' }] },
- interfaces: { title: 'Interface List', size: { w: 840, h: 380 }, tabs: [{ label: 'Interface', model: 'interfaces' }, { label: 'Networks', model: 'networks' }] },
+ interfaces: { title: 'Interface List', size: { w: 900, h: 400 }, tabs: [
+  { label: 'Interface', model: 'interfaces' }, { label: 'Ethernet', model: 'ethernet' }, { label: 'VLAN', model: 'vlans' },
+  { label: 'WireGuard', model: 'wireguard' }, { label: 'WireGuard Peers', model: 'wireguard-peers' }, { label: 'Networks', model: 'networks' }
+ ] },
  'ip-addresses': { title: 'Address List', size: { w: 500, h: 300 }, tabs: [{ label: 'Addresses', model: 'addresses' }] },
  'ip-routes': { title: 'Route List', size: { w: 760, h: 340 }, tabs: [{ label: 'Routes', model: 'routes' }] },
  'ip-firewall': { title: 'Firewall', size: { w: 960, h: 420 }, tabs: [
-  { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }
+  { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Address Lists', model: 'fw-address-lists' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }
  ] },
  wifi: { title: 'WiFi', size: { w: 900, h: 320 }, tabs: [{ label: 'WiFi Interfaces', model: 'wifi-interfaces' }, { label: 'Radios', model: 'wifi-radios' }, { label: 'Registration', model: 'wifi-registration' }] },
  ppp: { title: 'PPP', size: { w: 860, h: 280 }, tabs: [{ label: 'Interface', model: 'ppp' }] },
  bridge: { title: 'Bridge', size: { w: 820, h: 340 }, tabs: [{ label: 'Bridge', model: 'bridges' }, { label: 'Ports', model: 'bridge-ports' }, { label: 'VLANs', model: 'bridge-vlans' }] },
  'ipv6-addresses': { title: 'IPv6 Address List', size: { w: 720, h: 320 }, tabs: [{ label: 'Addresses', model: 'addresses6' }] },
  'ipv6-routes': { title: 'IPv6 Route List', size: { w: 900, h: 360 }, tabs: [{ label: 'Routes', model: 'routes6' }] },
- 'ip-dhcp-server': { title: 'DHCP Server', size: { w: 780, h: 340 }, tabs: [{ label: 'DHCP', model: 'dhcp-servers' }, { label: 'Leases', model: 'dhcp-leases' }, { label: 'DHCPv6 Bindings', model: 'dhcp6-bindings' }] },
+ 'ip-dhcp-server': { title: 'DHCP Server', size: { w: 780, h: 340 }, tabs: [{ label: 'DHCP', model: 'dhcp-servers' }, { label: 'Networks', model: 'dhcp-networks' }, { label: 'Leases', model: 'dhcp-leases' }, { label: 'Options', model: 'dhcp-options' }, { label: 'DHCPv6 Bindings', model: 'dhcp6-bindings' }] },
  'ip-dns': { title: 'DNS Settings', size: { w: 560, h: 380 }, tabs: [{ label: 'Settings', model: 'dns-settings' }, { label: 'Static', model: 'dns-static' }] },
  'system-identity': { title: 'Identity', size: { w: 420, h: 180 }, tabs: [{ label: 'Identity', model: 'system-identity' }] },
  'system-clock': { title: 'Clock', size: { w: 480, h: 220 }, tabs: [{ label: 'Time', model: 'system-clock' }] },
@@ -27,6 +30,10 @@ export const WINDOW_KINDS = {
  'system-startup': { title: 'Startup', size: { w: 560, h: 440 }, tabs: [{ label: 'Services', model: 'system-startup' }] },
  'system-resources': { title: 'Resources', size: { w: 480, h: 330 }, tabs: [{ label: 'Resources', model: 'system-resources' }] },
  'system-backup': { title: 'Backup', size: { w: 520, h: 200 }, tabs: [{ label: 'Backup', model: 'system-backup' }] },
+ 'routing-rules': { title: 'Routing Rules', size: { w: 900, h: 320 }, tabs: [{ label: 'Rules', model: 'routing-rules' }] },
+ 'ip-arp': { title: 'ARP List', size: { w: 640, h: 320 }, tabs: [{ label: 'ARP', model: 'ip-arp' }] },
+ 'ipv6-neighbors': { title: 'IPv6 Neighbor List', size: { w: 760, h: 320 }, tabs: [{ label: 'Neighbors', model: 'ipv6-neighbors' }] },
+ 'ip-services': { title: 'IP Service List', size: { w: 660, h: 260 }, tabs: [{ label: 'Services', model: 'ip-services' }] },
  log: { title: 'Log', size: { w: 860, h: 420 }, tabs: [{ label: 'Log', model: 'log' }] },
  'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
  'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },

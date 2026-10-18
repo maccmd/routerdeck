@@ -9,7 +9,7 @@ const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'crontab'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'crontab'];
 // Configurations kept as whole texts rather than UCI sections.
 const FILES = ['crontab'];
 const clone = value => structuredClone(value);
@@ -29,6 +29,11 @@ function initialConfigs() {
  dhcp.cfg1392bd = section('host', 'cfg1392bd', 20, { name: 'nas', mac: '52:54:00:aa:10:01', ip: '192.168.88.10', dns: '1', duid: '000100012a3b4c5d525400aa1001', hostid: '10' }, true);
  dhcp.cfg1892bd = section('domain', 'cfg1892bd', 21, { name: 'printer.lan', ip: '192.168.88.122' }, true);
  dhcp.cfg1992bd = section('cname', 'cfg1992bd', 22, { cname: 'files.lan', target: 'nas.lan', comment: 'Shared folders' }, true);
+ network.wg0 = section('interface', 'wg0', 26, { proto: 'wireguard', private_key: 'oK56DE9Ue9zK76rAc8pBl6opph+1v36lm7cXXsQKrQM=', listen_port: '51820', addresses: ['10.8.0.1/24'] });
+ network.cfg2092bd = section('wireguard_wg0', 'cfg2092bd', 27, { description: 'phone', public_key: 'xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=', allowed_ips: ['10.8.0.2/32'], persistent_keepalive: '25' }, true);
+ network.cfg2192bd = section('rule', 'cfg2192bd', 28, { src: '192.168.88.128/25', lookup: '100', priority: '1000', comment: 'Upper half via table 100' }, true);
+ firewall.cfg2292bd = section('ipset', 'cfg2292bd', 22, { name: 'blocklist', family: 'ipv4', match: ['net'], entry: ['198.51.100.0/24', '203.0.113.66'] }, true);
+ dhcp.lan.dhcp_option = ['42,192.168.88.1'];
  network.pppoe_backup = section('interface', 'pppoe_backup', 25, { proto: 'pppoe', device: 'eth1', username: 'customer@isp.example', password: 'not-a-real-password', service: 'internet', disabled: '1', comment: 'Backup line' });
  const wireless = clone(capturedWifi['uci:wireless']);
  const system = {
@@ -38,8 +43,9 @@ function initialConfigs() {
  // Values captured on OpenWrt 25.12.5.
  const dropbear = { main: section('dropbear', 'main', 0, { enable: '1', PasswordAuth: 'on', RootPasswordAuth: 'on', Port: '22' }) };
  const uhttpd = { main: section('uhttpd', 'main', 0, { listen_http: ['0.0.0.0:80', '[::]:80'], listen_https: ['0.0.0.0:443', '[::]:443'], redirect_https: '0', home: '/www', rfc1918_filter: '1', cert: '/etc/uhttpd.crt', key: '/etc/uhttpd.key', ubus_prefix: '/ubus' }) };
+ const ttyd = { cfg2392bd: section('ttyd', 'cfg2392bd', 0, { interface: '@lan', command: '/bin/login' }, true) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, crontab };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, crontab };
 }
 
 const CLIENTS = [
@@ -75,7 +81,9 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  }
 
  function setValues(target, values) {
-  for (const [key, value] of Object.entries(values ?? {})) {
+  for (let [key, value] of Object.entries(values ?? {})) {
+   // The plugin makes new WireGuard keys on the router; so does the mock.
+   if (value === '@generate:wireguard-key') value = Buffer.from(Array.from({ length: 32 }, (unused, index) => (index * 37 + serial) % 256)).toString('base64');
    if (value == null || value === '' || (Array.isArray(value) && !value.length)) delete target[key];
    else target[key] = value;
   }
@@ -492,6 +500,30 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
 
  return {
   watchdog,
+  neighbors: () => ({ neighbors: [
+   ...CLIENTS.slice(0, 4).map((client, index) => ({ family: 4, address: client.ipaddr, dev: 'br-lan', mac: client.macaddr, router: false, state: index % 2 ? 'STALE' : 'REACHABLE' })),
+   { family: 4, address: '192.168.88.250', dev: 'br-lan', router: false, state: 'FAILED' },
+   { family: 4, address: '203.0.113.1', dev: 'eth0', mac: '52:54:00:ff:00:01', router: false, state: 'REACHABLE' },
+   { family: 6, address: 'fe80::1', dev: 'eth0', mac: '52:54:00:ff:00:01', router: true, state: 'STALE' },
+   { family: 6, address: 'fd00:88::5c1', dev: 'br-lan', mac: '52:54:00:aa:10:02', router: false, state: 'REACHABLE' }
+  ] }),
+  rules: () => {
+   const list = [{ family: 4, priority: 0, from: 'all', lookup: 'local' }];
+   for (const rule of sectionsOf('network', 'rule').filter(item => item.disabled !== '1')) list.push({ family: 4, priority: Number(rule.priority ?? 32765), from: rule.src ?? 'all', ...(rule.dest ? { to: rule.dest } : {}), ...(rule.action ? { action: rule.action } : { lookup: rule.lookup ?? 'main' }) });
+   for (const rule of sectionsOf('network', 'rule6').filter(item => item.disabled !== '1')) list.push({ family: 6, priority: Number(rule.priority ?? 32765), from: rule.src ?? 'all', ...(rule.dest ? { to: rule.dest } : {}), ...(rule.action ? { action: rule.action } : { lookup: rule.lookup ?? 'main' }) });
+   list.push({ family: 4, priority: 32766, from: 'all', lookup: 'main' }, { family: 4, priority: 32767, from: 'all', lookup: 'default' }, { family: 6, priority: 0, from: 'all', lookup: 'local' }, { family: 6, priority: 32766, from: 'all', lookup: 'main' });
+   return { rules: list };
+  },
+  wireguard: () => {
+   const t = Math.floor(now() / 1000), interfaces = {};
+   for (const iface of sectionsOf('network', 'interface').filter(item => item.proto === 'wireguard' && item.disabled !== '1')) {
+    interfaces[iface['.name']] = { public_key: 'Q0bVxMq8yDtW3gKIdWnHpcWbF8fZ2+0JxHf6mRb5zVk=', listen_port: Number(iface.listen_port ?? 51820), peers: sectionsOf('network', `wireguard_${iface['.name']}`).filter(peer => peer.disabled !== '1').map((peer, index) => ({
+     public_key: peer.public_key, preshared: !!peer.preshared_key, endpoint: index ? null : '198.51.100.7:40312', allowed_ips: [].concat(peer.allowed_ips ?? []),
+     latest_handshake: index ? 0 : t - 42, rx_bytes: index ? 0 : 1843200 + Math.floor(seconds()) * 900, tx_bytes: index ? 0 : 9437184 + Math.floor(seconds()) * 2400, keepalive: peer.persistent_keepalive ? Number(peer.persistent_keepalive) : null
+    })) };
+   }
+   return { available: true, now: t, interfaces };
+  },
   packages: () => ({ manager: 'apk', packages: PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested })) }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
   services: () => clone(services), serviceAction,

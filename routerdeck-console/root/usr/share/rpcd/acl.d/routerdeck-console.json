@@ -11,7 +11,7 @@
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "conntrack", "crontab", "diag", "fw_counters", "history", "info", "log", "packages", "routes", "terminal" ],
+				"routerdeck": [ "conntrack", "crontab", "diag", "fw_counters", "history", "info", "log", "neighbors", "packages", "routes", "rules", "terminal", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]

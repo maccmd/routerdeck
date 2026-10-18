@@ -62,7 +62,7 @@ test('menu opens cascaded windows without moving the open ones', async ({ page }
  expect(await rect(interfaces)).toEqual(first);
  const addresses = await rect(win(page, 'Address List'));
  expect([addresses.x - first.x, addresses.y - first.y]).toEqual([24, 24]);
- await expect(win(page, 'Firewall').getByRole('tab')).toHaveText(['Filter Rules', 'NAT', 'Connections', 'Zones']);
+ await expect(win(page, 'Firewall').getByRole('tab')).toHaveText(['Filter Rules', 'NAT', 'Address Lists', 'Connections', 'Zones']);
  await expect(win(page, 'Log').getByRole('status').first()).toHaveText(/^\d+ items/);
  // A single-instance window is brought to the front, not opened twice.
  await page.getByRole('menuitem', { name: 'Interfaces' }).click();
@@ -116,6 +116,8 @@ test('keyboard opens submenus and cycles windows', async ({ page }) => {
  await expect(page.getByRole('menuitem', { name: 'IP', exact: true })).toBeFocused();
  await page.keyboard.press('ArrowRight');
  await expect(page.getByRole('menuitem', { name: 'Addresses', exact: true })).toBeFocused();
+ await page.keyboard.press('ArrowDown');
+ await expect(page.getByRole('menuitem', { name: 'ARP', exact: true })).toBeFocused();
  await page.keyboard.press('ArrowDown');
  await page.keyboard.press('Enter');
  await expect(win(page, 'Route List')).toBeVisible();

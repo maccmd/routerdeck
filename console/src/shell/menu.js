@@ -10,14 +10,20 @@ export const MENU = [
  { id: 'ppp', label: 'PPP', icon: 'ppp', window: 'ppp' },
  { id: 'ip', label: 'IP', icon: 'ip', children: [
   { id: 'ip-addresses', label: 'Addresses', window: 'ip-addresses' },
+  { id: 'ip-arp', label: 'ARP', window: 'ip-arp' },
   { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },
   { id: 'ip-firewall', label: 'Firewall', window: 'ip-firewall' },
   { id: 'ip-dhcp-server', label: 'DHCP Server', window: 'ip-dhcp-server' },
-  { id: 'ip-dns', label: 'DNS', window: 'ip-dns' }
+  { id: 'ip-dns', label: 'DNS', window: 'ip-dns' },
+  { id: 'ip-services', label: 'Services', window: 'ip-services' }
  ] },
  { id: 'ipv6', label: 'IPv6', icon: 'ipv6', children: [
   { id: 'ipv6-addresses', label: 'Addresses', window: 'ipv6-addresses' },
+  { id: 'ipv6-neighbors', label: 'Neighbors', window: 'ipv6-neighbors' },
   { id: 'ipv6-routes', label: 'Routes', window: 'ipv6-routes' }
+ ] },
+ { id: 'routing', label: 'Routing', icon: 'routing', children: [
+  { id: 'routing-rules', label: 'Rules', window: 'routing-rules' }
  ] },
  { id: 'system', label: 'System', icon: 'system', children: [
   { id: 'system-identity', label: 'Identity', window: 'system-identity' },

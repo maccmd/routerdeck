@@ -4,7 +4,7 @@
 // Rule order is the section order; drag and drop rewrites it.
 import { sections, truthy, list, text, invalid, NAME, zoneOptions, counterKeys, reorderOps, compact, networkOptions } from './common.js';
 import { bytes, count, uptime } from '../lib/format.js';
-import { addressKey, compressIPv6 } from '../lib/ip.js';
+import { addressKey, compressIPv6, parseCidr, parseCidr6 } from '../lib/ip.js';
 
 const ACTIONS = ['accept', 'drop', 'reject', 'notrack'];
 const POLICIES = ['ACCEPT', 'REJECT', 'DROP'];
@@ -31,6 +31,17 @@ function negatable(value) {
  return { negate: textValue.startsWith('!'), value: textValue.replace(/^!\s*/, '') };
 }
 const withNegation = field => field?.value ? `${field.negate ? '!' : ''}${field.value.trim()}` : '';
+
+// A rule names one address list (fw4 ipset) with its direction: "name src".
+function ruleList(section, firewall) {
+ const match = /^(!?)(\S+)(?:\s+(src|dest))?/.exec(text(section.ipset));
+ if (!match) return { src_list: '', dst_list: '' };
+ const set = sections(firewall, 'ipset').find(item => item.name === match[2]);
+ const direction = match[3] ?? (list(set?.match).some(item => item.startsWith('dest')) ? 'dest' : 'src');
+ const name = match[1] + match[2];
+ return direction === 'dest' ? { src_list: '', dst_list: name } : { src_list: name, dst_list: '' };
+}
+const listOptions = firewall => sections(firewall, 'ipset').filter(set => set.name).map(set => ({ value: set.name, label: set.name }));
 
 
 export const filterRules = {
@@ -96,6 +107,8 @@ export const filterRules = {
    { id: 'dest_port', label: 'Dst. Port', type: 'negatable', visible: values => /tcp|udp/.test(values.proto || 'tcp udp') },
    { id: 'icmp_type', label: 'ICMP Type', type: 'list', visible: values => /icmp/.test(values.proto) },
    { id: 'src_mac', label: 'Src. MAC Address', type: 'negatable', tab: 'Advanced' },
+   { id: 'src_list', label: 'Src. Address List', type: 'select', tab: 'Advanced', allowEmpty: true, options: listOptions(data['uci:firewall']) },
+   { id: 'dst_list', label: 'Dst. Address List', type: 'select', tab: 'Advanced', allowEmpty: true, options: listOptions(data['uci:firewall']) },
    { id: 'mark', label: 'Mark', type: 'text', tab: 'Advanced', placeholder: '0x10/0xff' },
    { id: 'limit', label: 'Limit', type: 'text', tab: 'Advanced', placeholder: '10/second' },
    { id: 'limit_burst', label: 'Limit Burst', type: 'number', tab: 'Advanced' },
@@ -109,13 +122,14 @@ export const filterRules = {
   return {
    chain: chainOf(section), src: section.src ?? '', dest: section.dest ?? '', family: section.family ?? '', proto: text(section.proto) || 'tcp udp',
    src_ip: negatable(section.src_ip), dest_ip: negatable(section.dest_ip), src_port: negatable(section.src_port), dest_port: negatable(section.dest_port),
-   icmp_type: list(section.icmp_type), src_mac: negatable(section.src_mac), mark: section.mark ?? '', limit: section.limit ?? '', limit_burst: section.limit_burst ?? '',
+   icmp_type: list(section.icmp_type), src_mac: negatable(section.src_mac), ...ruleList(section, data['uci:firewall']),
+   mark: section.mark ?? '', limit: section.limit ?? '', limit_burst: section.limit_burst ?? '',
    target: String(section.target ?? 'drop').toLowerCase(), bytes: row.cells.bytes, packets: row.cells.packets
   };
  },
  defaults: data => ({
   chain: 'input', src: zoneOptions(data['uci:firewall']).find(zone => zone.value === 'wan')?.value ?? '*', dest: '', family: '', proto: 'tcp udp',
-  src_ip: negatable(''), dest_ip: negatable(''), src_port: negatable(''), dest_port: negatable(''), icmp_type: [], src_mac: negatable(''),
+  src_ip: negatable(''), dest_ip: negatable(''), src_port: negatable(''), dest_port: negatable(''), icmp_type: [], src_mac: negatable(''), src_list: '', dst_list: '',
   mark: '', limit: '', limit_burst: '', target: 'accept', bytes: '', packets: ''
  }),
 
@@ -125,12 +139,14 @@ export const filterRules = {
   if (values.chain !== 'output' && !values.src) invalid('src', 'Choose the zone traffic comes from');
   if (values.chain !== 'input' && !values.dest) invalid('dest', 'Choose the zone traffic goes to');
   if (values.limit_burst && !/^\d+$/.test(values.limit_burst)) invalid('limit_burst', 'Limit burst is a whole number');
+  if (values.src_list && values.dst_list) invalid('dst_list', 'An OpenWrt rule matches one address list');
   const ports = /tcp|udp/.test(values.proto || 'tcp udp');
   const options = compact({
    src: values.chain === 'output' ? '' : values.src, dest: values.chain === 'input' ? '' : values.dest, family: values.family,
    proto: values.proto === 'tcp udp' ? '' : values.proto, src_ip: withNegation(values.src_ip), dest_ip: withNegation(values.dest_ip),
    src_port: ports ? withNegation(values.src_port) : '', dest_port: ports ? withNegation(values.dest_port) : '',
    icmp_type: /icmp/.test(values.proto) ? values.icmp_type ?? [] : [], src_mac: withNegation(values.src_mac),
+   ipset: values.src_list ? `${values.src_list} src` : values.dst_list ? `${values.dst_list} dest` : '',
    mark: values.mark, limit: values.limit, limit_burst: values.limit_burst, target: values.target.toUpperCase()
   });
   return row
@@ -406,3 +422,95 @@ export const connections = {
  values: row => ({ ...row.cells })
 };
 
+
+/* --- Address lists (fw4 ipset) ----------------------------------------- */
+
+function addressOf(value) {
+ const textValue = String(value ?? '').trim();
+ const v4 = parseCidr(textValue);
+ if (v4) return { family: 'ipv4', value: textValue.includes('/') ? `${v4.network}/${v4.prefix}` : v4.address };
+ const v6 = parseCidr6(textValue);
+ if (v6) return { family: 'ipv6', value: textValue.includes('/') ? `${v6.network}/${v6.prefix}` : v6.address };
+ return null;
+}
+
+// RouterOS lists addresses; fw4 keeps them as entries of a named set.
+// A list without entries still shows, so it can be filled or removed.
+export const addressLists = {
+ id: 'fw-address-lists',
+ noun: 'Address List Entry',
+ sources: ['uci:firewall'],
+ columns: [
+  { id: 'flags', label: '', width: 30 },
+  { id: 'list', label: 'List', width: 140 },
+  { id: 'address', label: 'Address', width: 200, sort: addressKey },
+  { id: 'family', label: 'Family', width: 60 },
+  { id: 'used', label: 'Used By Rules', width: 110, align: 'right' }
+ ],
+ flagLegend: { X: 'list disabled', E: 'empty list' },
+ defaultSort: 'list',
+ note: 'fw4 keeps address lists as ipset sections; rules use them on their Advanced tab.',
+ rows(data) {
+  const firewall = data['uci:firewall'], rows = [];
+  const rules = [...sections(firewall, 'rule'), ...sections(firewall, 'redirect')];
+  for (const set of sections(firewall, 'ipset').filter(item => item.name)) {
+   const disabled = !truthy(set.enabled, true);
+   const used = String(rules.filter(rule => text(rule.ipset).replace(/^!/, '').split(/\s+/)[0] === set.name).length);
+   const entries = list(set.entry);
+   const base = { section: set['.name'], set: set.name, disabled, family: set.family ?? 'ipv4' };
+   if (!entries.length) rows.push({ ...base, key: `${set['.name']}:empty`, empty: true, flags: (disabled ? 'X' : '') + 'E', cells: { list: set.name, address: '', family: base.family, used } });
+   entries.forEach((entry, index) => rows.push({ ...base, key: `${set['.name']}:${index}`, index, flags: disabled ? 'X' : '', cells: { list: set.name, address: entry, family: base.family, used } }));
+  }
+  return rows;
+ },
+ itemTitle: row => `Address List Entry <${row?.cells.address || row?.cells.list || 'new'}>`,
+ itemStatus: row => [row.disabled ? 'list disabled' : 'list enabled', row.empty ? 'empty list' : null],
+ canAdd: () => true,
+ canRemove: () => true,
+ canToggle: () => true,
+ toggleHint: 'OpenWrt enables and disables whole lists',
+ commentHint: 'OpenWrt has no comments on list entries',
+ fields: data => [
+  { id: 'list', label: 'List', type: 'combo', options: listOptions(data['uci:firewall']), placeholder: 'blocklist' },
+  { id: 'address', label: 'Address', type: 'text', placeholder: '192.0.2.0/24 or 2001:db8::1' }
+ ],
+ values: row => ({ list: row.set, address: row.cells.address }),
+ defaults: data => ({ list: listOptions(data['uci:firewall'])[0]?.value ?? '', address: '' }),
+ save(values, row, data) {
+  const name = values.list.trim();
+  if (!NAME.test(name)) invalid('list', 'A list name has letters, digits and underscores');
+  const address = addressOf(values.address);
+  if (!address) invalid('address', 'Enter an address or a prefix such as 192.0.2.0/24');
+  const firewall = data['uci:firewall'];
+  const target = sections(firewall, 'ipset').find(set => set.name === name);
+  if (target && (target.family ?? 'ipv4') !== address.family) invalid('address', `${name} holds ${target.family ?? 'ipv4'} addresses`);
+  const lists = new Map();
+  const entries = set => { if (!lists.has(set['.name'])) lists.set(set['.name'], list(set.entry)); return lists.get(set['.name']); };
+  if (row && !row.empty) entries(sections(firewall, 'ipset').find(set => set['.name'] === row.section))[row.index] = null;
+  if (target && entries(target).includes(address.value)) invalid('address', `${address.value} is already in ${name}`);
+  const ops = [];
+  if (target) entries(target).push(address.value);
+  for (const [section, values] of lists) ops.push({ op: 'set', config: 'firewall', section, values: { entry: values.filter(Boolean) } });
+  if (!target) ops.push({ op: 'add', config: 'firewall', type: 'ipset', values: { name, family: address.family, match: ['net'], entry: [address.value] } });
+  return { description: row && !row.empty ? `Change ${row.set} entry ${row.cells.address} to ${address.value}` : `Add ${address.value} to address list ${name}`, ops };
+ },
+ remove(rows, data) {
+  const firewall = data['uci:firewall'], ops = [], lists = new Map();
+  for (const row of rows) {
+   if (row.empty) { ops.push({ op: 'delete', config: 'firewall', section: row.section }); continue; }
+   const set = sections(firewall, 'ipset').find(item => item['.name'] === row.section);
+   if (!lists.has(row.section)) lists.set(row.section, list(set.entry));
+   lists.get(row.section)[row.index] = null;
+  }
+  for (const [section, entries] of lists) ops.push({ op: 'set', config: 'firewall', section, values: { entry: entries.filter(Boolean) } });
+  return { description: `Remove ${rows.map(row => row.cells.address || `list ${row.set}`).join(', ')}`, ops };
+ },
+ removeBlocked: rows => {
+  const used = rows.find(row => row.empty && row.cells.used !== '0');
+  return used ? `A rule still uses the list ${used.set}` : null;
+ },
+ toggle: (rows, enable) => {
+  const sets = [...new Map(rows.map(row => [row.section, row.set]))];
+  return { description: `${enable ? 'Enable' : 'Disable'} address list ${sets.map(([, name]) => name).join(', ')}`, ops: sets.map(([section]) => ({ op: 'set', config: 'firewall', section, values: { enabled: enable ? null : '0' } })) };
+ }
+};

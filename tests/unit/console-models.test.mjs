@@ -107,7 +107,7 @@ test('filter rules map fw4 sections, counters and order', () => {
  assert.equal(byKey(rows, 'cfg0a92bd').cells.packets, String(input.counters.counters['Allow-ICMPv6-Input'][0]));
  assert.equal(byKey(rows, 'cfg0b92bd').cells.chain, 'forward');
  const rule = MODELS['fw-filter'].save({ ...MODELS['fw-filter'].defaults(input), dest_port: { negate: false, value: '8443' }, proto: 'tcp' }, null, input);
- assert.deepEqual(rule.ops[0], { op: 'add', config: 'firewall', type: 'rule', values: { src: 'wan', dest: null, family: null, proto: 'tcp', src_ip: null, dest_ip: null, src_port: null, dest_port: '8443', icmp_type: [], src_mac: null, mark: null, limit: null, limit_burst: null, target: 'ACCEPT' } });
+ assert.deepEqual(rule.ops[0], { op: 'add', config: 'firewall', type: 'rule', values: { src: 'wan', dest: null, family: null, proto: 'tcp', src_ip: null, dest_ip: null, src_port: null, dest_port: '8443', icmp_type: [], src_mac: null, ipset: null, mark: null, limit: null, limit_burst: null, target: 'ACCEPT' } });
  rejects(() => MODELS['fw-filter'].save({ ...MODELS['fw-filter'].defaults(input), dest_port: { negate: false, value: 'http' } }, null, input), 'dest_port');
  const negated = MODELS['fw-filter'].save({ ...MODELS['fw-filter'].defaults(input), src_ip: { negate: true, value: '10.0.0.0/8' } }, null, input);
  assert.equal(negated.ops[0].values.src_ip, '!10.0.0.0/8');

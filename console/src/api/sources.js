@@ -50,6 +50,13 @@ export const SOURCES = {
  'uci:firewall': [uci('firewall'), 5000],
  'uci:dhcp': [uci('dhcp'), 5000],
  'uci:system': [uci('system'), 5000],
+ // Configurations of optional packages read as empty when missing.
+ 'uci:uhttpd': [() => uci('uhttpd')().catch(() => ({})), 10000],
+ 'uci:dropbear': [() => uci('dropbear')().catch(() => ({})), 10000],
+ 'uci:ttyd': [() => uci('ttyd')().catch(() => ({})), 10000],
+ neighbors: [() => client.call('routerdeck', 'neighbors'), 3000],
+ rules: [() => client.call('routerdeck', 'rules'), 5000],
+ wireguard: [() => client.call('routerdeck', 'wireguard').catch(() => ({ available: false, interfaces: {} })), 3000],
  // Optional objects: without LuCI or procd's rc, these read as empty.
  timezones: [() => client.call('luci', 'getTimezones').then(reply => reply ?? null, () => null), 600000],
  rc: [() => client.call('rc', 'list').then(reply => reply ?? {}, () => ({})), 5000],

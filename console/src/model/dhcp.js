@@ -246,3 +246,158 @@ export const bindings6 = {
  toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} DHCPv6 binding ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { enable: enable ? null : '0' } })) }),
  comment: (rows, comment) => ({ description: `Comment DHCPv6 binding ${rows.map(row => row.cells.hostname || row.cells.duid).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'dhcp', section: row.section, values: { comment: comment || null } })) })
 };
+
+/* --- DHCP networks and options ----------------------------------------- */
+
+// dnsmasq option codes RouterOS shows as network settings, numeric or named.
+const KNOWN = { 3: 'router', 6: 'dns-server', 15: 'domain-name', 42: 'ntp-server', 119: 'domain-search', 121: 'classless-static-route' };
+const codeOf = name => {
+ const plain = String(name).replace(/^option6?:/, '');
+ return Object.keys(KNOWN).find(code => KNOWN[code] === plain) ?? plain;
+};
+
+// "6,192.0.2.1,192.0.2.2" → { code: '6', value: '192.0.2.1,192.0.2.2' }.
+// Entries with a tag or other dnsmasq syntax keep the code they start with.
+export function splitOption(entry) {
+ const textValue = String(entry ?? '');
+ if (/^tag:/.test(textValue)) return { code: textValue.split(',')[0], value: textValue.split(',').slice(1).join(','), tagged: true };
+ const comma = textValue.indexOf(',');
+ return comma < 0 ? { code: codeOf(textValue), value: '' } : { code: codeOf(textValue.slice(0, comma)), value: textValue.slice(comma + 1) };
+}
+
+// dnsmasq hands out DHCPv4 unless odhcpd is made the main DHCP server.
+const odhcpdServes = data => truthy(sections(data['uci:dhcp'], 'odhcpd')[0]?.maindhcp);
+
+function routerAddress(data, section) {
+ const network = sections(data['uci:network'], 'interface').find(item => item['.name'] === section.interface);
+ return parseCidr(list(network?.ipaddr)[0] ?? '');
+}
+
+export const dhcpNetworks = {
+ id: 'dhcp-networks',
+ noun: 'DHCP Network',
+ sources: ['uci:dhcp', 'uci:network'],
+ columns: [
+  { id: 'flags', label: '', width: 26 },
+  { id: 'address', label: 'Address', width: 130, sort: addressKey },
+  { id: 'interface', label: 'Interface', width: 80 },
+  { id: 'gateway', label: 'Gateway', width: 120 },
+  { id: 'dns', label: 'DNS Servers', width: 170 },
+  { id: 'domain', label: 'Domain', width: 90 },
+  { id: 'ntp', label: 'NTP Servers', width: 130 }
+ ],
+ flagLegend: { X: 'server disabled (ignore)' },
+ defaultSort: null,
+ note: 'Empty values hand out this router: dnsmasq answers DNS itself and announces itself as the gateway.',
+ status: data => odhcpdServes(data) ? 'odhcpd serves DHCPv4 here (maindhcp), and it ignores these dnsmasq options' : '',
+ rows(data) {
+  const domain = sections(data['uci:dhcp'], 'dnsmasq')[0]?.domain ?? '';
+  return sections(data['uci:dhcp'], 'dhcp').map(section => {
+   const cidr = routerAddress(data, section);
+   const options = list(section.dhcp_option).map(splitOption);
+   const value = code => options.find(option => option.code === code && !option.tagged)?.value ?? '';
+   const router = cidr?.address ?? 'router';
+   return {
+    key: section['.name'], section: section['.name'], disabled: truthy(section.ignore), flags: truthy(section.ignore) ? 'X' : '', options,
+    cells: { address: cidr ? `${cidr.network}/${cidr.prefix}` : '', interface: section.interface ?? '', gateway: value('3') || router, dns: value('6') || router, domain: value('15') || domain, ntp: value('42') }
+   };
+  });
+ },
+ itemTitle: row => `DHCP Network <${row?.cells.address || row?.key}>`,
+ itemStatus: row => [row.disabled ? 'server disabled' : 'server enabled'],
+ fields: () => [
+  { id: 'address', label: 'Address', type: 'static' },
+  { id: 'gateway', label: 'Gateway', type: 'text', placeholder: 'this router' },
+  { id: 'dns', label: 'DNS Servers', type: 'list' },
+  { id: 'domain', label: 'Domain', type: 'text', placeholder: 'the local domain' },
+  { id: 'ntp', label: 'NTP Servers', type: 'list' }
+ ],
+ values(row) {
+  const value = code => row.options.find(option => option.code === code && !option.tagged)?.value ?? '';
+  return { address: row.cells.address, gateway: value('3'), dns: value('6').split(',').filter(Boolean), domain: value('15'), ntp: value('42').split(',').filter(Boolean) };
+ },
+ save(values, row, data, { dirty = null } = {}) {
+  const ip = address => isIPv4(address);
+  if (values.gateway && !ip(values.gateway)) invalid('gateway', 'Enter an IPv4 address');
+  for (const server of values.dns ?? []) if (!ip(server)) invalid('dns', `${server} is not an IPv4 address`);
+  for (const server of values.ntp ?? []) if (!ip(server)) invalid('ntp', `${server} is not an IPv4 address`);
+  if (values.domain && !/^[A-Za-z0-9.-]+$/.test(values.domain)) invalid('domain', 'Enter a domain such as home.arpa');
+  const wanted = { 3: values.gateway, 6: (values.dns ?? []).join(','), 15: values.domain, 42: (values.ntp ?? []).join(',') };
+  const field = { 3: 'gateway', 6: 'dns', 15: 'domain', 42: 'ntp' };
+  const touched = Object.keys(wanted).filter(code => !dirty || dirty.has(field[code]));
+  if (!touched.length) return null;
+  const section = sections(data['uci:dhcp'], 'dhcp').find(item => item['.name'] === row.section);
+  const kept = list(section.dhcp_option).filter(entry => { const option = splitOption(entry); return option.tagged || !touched.includes(option.code); });
+  const added = touched.filter(code => wanted[code]).map(code => `${code},${wanted[code]}`);
+  return { description: `Change DHCP network ${row.cells.address || row.key}`, ops: [{ op: 'set', config: 'dhcp', section: row.section, values: { dhcp_option: [...kept, ...added] } }] };
+ }
+};
+
+export const dhcpOptions = {
+ id: 'dhcp-options',
+ noun: 'DHCP Option',
+ sources: ['uci:dhcp'],
+ columns: [
+  { id: 'flags', label: '', width: 26 },
+  { id: 'server', label: 'Server', width: 90 },
+  { id: 'code', label: 'Code', width: 60, align: 'right', sort: value => Number(value) || 0 },
+  { id: 'name', label: 'Name', width: 150 },
+  { id: 'value', label: 'Value', width: 260 }
+ ],
+ flagLegend: { F: 'sent even when the client does not ask' },
+ defaultSort: null,
+ status: data => odhcpdServes(data) ? 'odhcpd serves DHCPv4 here (maindhcp), and it ignores these dnsmasq options' : '',
+ rows(data) {
+  const rows = [];
+  for (const section of sections(data['uci:dhcp'], 'dhcp')) {
+   for (const [option, force] of [['dhcp_option', false], ['dhcp_option_force', true]]) {
+    list(section[option]).forEach((entry, index) => {
+     const parsed = splitOption(entry);
+     rows.push({ key: `${section['.name']}:${option}:${index}`, section: section['.name'], option, index, force, flags: force ? 'F' : '',
+      cells: { server: section.interface ?? section['.name'], code: parsed.code, name: KNOWN[parsed.code] ?? '', value: parsed.value } });
+    });
+   }
+  }
+  return rows;
+ },
+ itemTitle: row => `DHCP Option <${row ? `${row.cells.server} ${row.cells.code}` : 'new'}>`,
+ itemStatus: row => [row.force ? 'forced' : 'on request'],
+ canAdd: data => sections(data['uci:dhcp'], 'dhcp').length > 0,
+ canRemove: () => true,
+ fields: data => [
+  { id: 'server', label: 'Server', type: 'select', options: sections(data['uci:dhcp'], 'dhcp').map(section => ({ value: section['.name'], label: section.interface ?? section['.name'] })) },
+  { id: 'code', label: 'Code', type: 'combo', options: Object.entries(KNOWN).map(([value, label]) => ({ value, label: `${value} ${label}` })) },
+  { id: 'value', label: 'Value', type: 'text', placeholder: '192.0.2.1,192.0.2.2' },
+  { id: 'force', label: 'Force', type: 'bool' }
+ ],
+ values: row => ({ server: row.section, code: row.cells.code, value: row.cells.value, force: row.force }),
+ defaults: data => ({ server: sections(data['uci:dhcp'], 'dhcp')[0]?.['.name'] ?? '', code: '', value: '', force: false }),
+ save(values, row, data) {
+  const code = String(values.code ?? '').trim();
+  if (!/^\d{1,3}$/.test(code) || Number(code) < 1 || Number(code) > 254) invalid('code', 'An option code is 1 to 254');
+  if (/[\n]/.test(values.value)) invalid('value', 'A value is one line');
+  const entry = values.value === '' ? code : `${code},${values.value.trim()}`;
+  const target = values.force ? 'dhcp_option_force' : 'dhcp_option';
+  const lists = new Map();
+  const of = (section, option) => {
+   const key = `${section}:${option}`;
+   if (!lists.has(key)) lists.set(key, { section, option, entries: list(sections(data['uci:dhcp'], 'dhcp').find(item => item['.name'] === section)?.[option]) });
+   return lists.get(key).entries;
+  };
+  if (row) of(row.section, row.option)[row.index] = null;
+  of(values.server, target).push(entry);
+  return {
+   description: row ? `Change DHCP option ${code}` : `Add DHCP option ${code}`,
+   ops: [...lists.values()].map(item => ({ op: 'set', config: 'dhcp', section: item.section, values: { [item.option]: item.entries.filter(value => value !== null) } }))
+  };
+ },
+ remove(rows, data) {
+  const lists = new Map();
+  for (const row of rows) {
+   const key = `${row.section}:${row.option}`;
+   if (!lists.has(key)) lists.set(key, { section: row.section, option: row.option, entries: list(sections(data['uci:dhcp'], 'dhcp').find(item => item['.name'] === row.section)?.[row.option]) });
+   lists.get(key).entries[row.index] = null;
+  }
+  return { description: `Remove DHCP option ${rows.map(row => row.cells.code).join(', ')}`, ops: [...lists.values()].map(item => ({ op: 'set', config: 'dhcp', section: item.section, values: { [item.option]: item.entries.filter(value => value !== null) } })) };
+ }
+};

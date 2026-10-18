@@ -57,12 +57,15 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   routerdeck: {
    info: (args, sid) => [0, {
     version, api: 1, mock: true, user: sessions.get(sid)?.username,
-    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true, luci_object: true, rc: true, cron: true, backup: true }
+    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true, luci_object: true, rc: true, cron: true, backup: true, wireguard: true }
    }],
    routes: (args, sid) => [0, { routes: args.family === 6 ? routerOf(sid).routes6() : routerOf(sid).routes4() }],
    fw_counters: (args, sid) => [0, routerOf(sid).counters()],
    conntrack: (args, sid) => [0, routerOf(sid).conntrack()],
    packages: (args, sid) => [0, routerOf(sid).packages()],
+   neighbors: (args, sid) => [0, routerOf(sid).neighbors()],
+   rules: (args, sid) => [0, routerOf(sid).rules()],
+   wireguard: (args, sid) => [0, routerOf(sid).wireguard()],
    crontab: (args, sid) => [0, routerOf(sid).crontab()],
    diag: (args, sid) => [0, routerOf(sid).diag(args)],
    log: (args, sid) => [0, routerOf(sid).log(args)],

@@ -17,7 +17,7 @@ import {
 	CONFIGS, FILES, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
-	safe_heartbeat, safe_clear, safe_restore, log_message
+	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, restart_wireguard
 } from 'routerdeck.core';
 
 const VERSION = '0.1.0';
@@ -339,6 +339,79 @@ function diag(args) {
 	return failure('invalid', 'Unknown action');
 }
 
+/* --- Neighbours, routing rules, WireGuard ------------------------------ */
+
+// `ip neigh` prints the same text with ip-full and busybox:
+// ADDRESS dev DEV [lladdr MAC] [router] STATE
+function neighbors() {
+	let list = [];
+	for (let family in [ 4, 6 ]) {
+		for (let line in split(run(sprintf('ip -%d neigh', family)).output, '\n')) {
+			let words = split(trim(line), /\s+/);
+			if (length(words) < 3 || words[1] != 'dev')
+				continue;
+			let entry = { family, address: words[0], dev: words[2], router: false, state: words[length(words) - 1] };
+			for (let i = 3; i < length(words); i++) {
+				if (words[i] == 'lladdr')
+					entry.mac = words[++i];
+				else if (words[i] == 'router')
+					entry.router = true;
+			}
+			push(list, entry);
+		}
+	}
+	return { neighbors: list };
+}
+
+// PRIORITY: [not] from SRC [to DST] [fwmark M] [iif X] [oif Y] lookup T | ACTION
+function rules() {
+	let list = [];
+	for (let family in [ 4, 6 ]) {
+		for (let line in split(run(sprintf('ip -%d rule', family)).output, '\n')) {
+			let head = match(line, /^([0-9]+):\s+(.*)$/);
+			if (!head)
+				continue;
+			let words = split(trim(head[2]), /\s+/);
+			let rule = { family, priority: int(head[1]) };
+			for (let i = 0; i < length(words); i++) {
+				let word = words[i];
+				if (word == 'not') rule.invert = true;
+				else if (word in [ 'from', 'to', 'fwmark', 'iif', 'oif', 'lookup', 'goto', 'tos', 'uidrange', 'ipproto', 'sport', 'dport', 'suppress_prefixlength' ]) rule[word] = words[++i];
+				else if (word in [ 'blackhole', 'prohibit', 'unreachable' ]) rule.action = word;
+			}
+			push(list, rule);
+		}
+	}
+	return { rules: list };
+}
+
+const WG_KEY = /^[A-Za-z0-9+\/]{42}[AEIMQUYcgkosw480]=$/;
+
+// `wg show all dump` without private and preshared keys: the console
+// never needs them back.
+function wireguard() {
+	if (!executable('/usr/bin/wg'))
+		return { available: false, interfaces: {} };
+	let interfaces = {};
+	for (let line in split(run('wg show all dump').output, '\n')) {
+		let fields = split(line, '\t');
+		if (length(fields) == 5)
+			interfaces[fields[0]] = { public_key: fields[2], listen_port: int(fields[3]), peers: [] };
+		else if (length(fields) == 9 && interfaces[fields[0]])
+			push(interfaces[fields[0]].peers, {
+				public_key: fields[1], preshared: fields[2] != '(none)', endpoint: fields[3] == '(none)' ? null : fields[3],
+				allowed_ips: fields[4] == '(none)' ? [] : split(fields[4], ','), latest_handshake: int(fields[5]),
+				rx_bytes: int(fields[6]), tx_bytes: int(fields[7]), keepalive: fields[8] == 'off' ? null : int(fields[8])
+			});
+	}
+	return { available: true, now: time(), interfaces };
+}
+
+function wireguard_key() {
+	let key = trim(run('wg genkey').output);
+	return match(key, WG_KEY) ? key : null;
+}
+
 /* --- Packages and scheduler ------------------------------------------- */
 
 function apk_world() {
@@ -551,6 +624,12 @@ function stage(ctx, ops) {
 			return failure('invalid', sprintf('Unknown operation %s', op?.op));
 
 		for (let key, value in values) {
+			// A new WireGuard key is made here, so it never crosses the network.
+			if (value == '@generate:wireguard-key') {
+				value = wireguard_key();
+				if (!value)
+					return failure('invalid', 'WireGuard keys need the wireguard-tools package');
+			}
 			if (value == null || value == '' || type(value) == 'array' && !length(value))
 				ctx.delete(config, section, key);
 			else
@@ -611,7 +690,11 @@ function apply(request) {
 			return failure('rejected', 'The firewall rejected this change', { details: join('\n', problems) });
 		}
 	}
+	if ('firewall' in changed)
+		sync_firewall_sets(before.firewall, config_text('firewall'));
 	announce(changed);
+	if ('network' in changed)
+		restart_wireguard(before.network, config_text('network'));
 
 	let safe = safe_state();
 	// A new change discards the redo branch, as in any undo history.
@@ -679,7 +762,11 @@ function undo_redo(direction) {
 			return failure('conflict', sprintf('%s was changed outside this history, so %s is not possible', name, direction));
 	for (let name in target.configs)
 		write_config(name, wanted[name]);
+	if ('firewall' in target.configs)
+		sync_firewall_sets(expected.firewall, wanted.firewall);
 	announce(target.configs);
+	if ('network' in target.configs)
+		restart_wireguard(expected.network, wanted.network);
 	target.undone = direction == 'undo';
 	history_save(entries);
 	return { ok: true, id: target.id, description: target.description, configs: target.configs };
@@ -781,7 +868,8 @@ return {
 						luci_object: 'luci' in objects,
 						rc: 'rc' in objects,
 						cron: executable('/usr/sbin/crond'),
-						backup: executable('/www/cgi-bin/cgi-backup')
+						backup: executable('/www/cgi-bin/cgi-backup'),
+						wireguard: executable('/usr/bin/wg')
 					}
 				};
 			}
@@ -813,6 +901,15 @@ return {
 		},
 		packages: {
 			call: () => packages()
+		},
+		neighbors: {
+			call: () => neighbors()
+		},
+		rules: {
+			call: () => rules()
+		},
+		wireguard: {
+			call: () => wireguard()
 		},
 		crontab: {
 			call: () => ({ text: config_text('crontab'), path: FILES.crontab, crond: executable('/usr/sbin/crond') })

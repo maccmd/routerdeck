@@ -17,7 +17,7 @@ export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
 export const FILES = { crontab: '/etc/crontabs/root' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'crontab' ];
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'crontab' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -75,6 +75,86 @@ export function announce(names) {
 	return true;
 };
 
+// Address lists (fw4 ipsets) with their static entries, read from the text
+// of /etc/config/firewall as uci writes it.
+function firewall_sets(text) {
+	let sets = {}, current = null;
+	for (let line in split(text ?? '', '\n')) {
+		let words = match(trim(line), /^(config|option|list)[ \t]+([^ \t]+)([ \t]+'?([^']*)'?)?$/);
+		if (!words)
+			continue;
+		if (words[1] == 'config') {
+			current = words[2] == 'ipset' ? { entries: [], enabled: true } : null;
+			continue;
+		}
+		if (!current)
+			continue;
+		if (words[1] == 'option' && words[2] == 'name') {
+			current.name = words[4];
+			sets[current.name] = current;
+		}
+		else if (words[1] == 'option' && words[2] == 'enabled')
+			current.enabled = !(words[4] in [ '0', 'no', 'off', 'false' ]);
+		else if (words[1] == 'list' && words[2] == 'entry')
+			push(current.entries, words[4]);
+	}
+	return sets;
+}
+
+// `fw4 reload` only adds to sets that already exist, so an address taken
+// off a list would stay in nftables until a restart. Sets that lost static
+// entries are flushed and reloaded at once; removed sets are deleted. Sets
+// without static entries (filled at runtime, e.g. by dnsmasq) are left alone.
+export function sync_firewall_sets(before_text, after_text) {
+	let before = firewall_sets(before_text), after = firewall_sets(after_text);
+	let flush = [], gone = [];
+	for (let name, set in before) {
+		let next = after[name];
+		if (!next || !next.enabled)
+			push(gone, name);
+		else if (length(filter(set.entries, entry => !(entry in next.entries))))
+			push(flush, name);
+	}
+	if (!length(flush) && !length(gone))
+		return false;
+	for (let name in flush)
+		system([ '/usr/sbin/nft', 'flush', 'set', 'inet', 'fw4', name ]);
+	system('/sbin/fw4 reload >/dev/null 2>&1');
+	for (let name in gone)
+		system(sprintf('/usr/sbin/nft delete set inet fw4 %s >/dev/null 2>&1', name));
+	return true;
+};
+
+// WireGuard peers are `wireguard_<interface>` sections; netifd reads them
+// only when it sets the interface up, so a reload does not apply them.
+function wireguard_peers(text) {
+	let peers = {}, current = null;
+	for (let line in split(text ?? '', '\n')) {
+		let head = match(line, /^config[ \t]+([^ \t]+)/);
+		if (head) {
+			let iface = match(head[1], /^wireguard_(.+)$/);
+			current = iface ? iface[1] : null;
+			if (current)
+				peers[current] = (peers[current] ?? '') + line + '\n';
+			continue;
+		}
+		if (current)
+			peers[current] += line + '\n';
+	}
+	return peers;
+}
+
+export function restart_wireguard(before_text, after_text) {
+	let before = wireguard_peers(before_text), after = wireguard_peers(after_text), restarted = [];
+	for (let iface in uniq([ ...keys(before), ...keys(after) ])) {
+		if (before[iface] != after[iface] && index('\n' + after_text, "\nconfig interface '" + iface + "'") >= 0) {
+			system([ '/sbin/ifup', iface ]);
+			push(restarted, iface);
+		}
+	}
+	return restarted;
+};
+
 // LuCI's apply with rollback keeps snapshots here until it is confirmed.
 // Changing configuration meanwhile would be overwritten by its rollback.
 export function luci_rollback_pending() {
@@ -121,9 +201,14 @@ export function safe_restore(state, reason) {
 	let changed = [];
 	for (let name in state.configs ?? CONFIGS) {
 		let saved = readfile(SAFE + '/snapshot/' + name);
-		if (saved != null && saved != config_text(name)) {
+		let current = config_text(name);
+		if (saved != null && saved != current) {
 			write_config(name, saved);
 			push(changed, name);
+			if (name == 'firewall')
+				sync_firewall_sets(current, saved);
+			if (name == 'network')
+				restart_wireguard(current, saved);
 		}
 	}
 	announce(changed);

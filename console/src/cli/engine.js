@@ -15,20 +15,27 @@ const TREE = {
   bridge: { model: 'bridges', children: { port: { model: 'bridge-ports' }, vlan: { model: 'bridge-vlans' } } },
   network: { model: 'networks' },
   'pppoe-client': { model: 'ppp' },
+  ethernet: { model: 'ethernet' },
+  vlan: { model: 'vlans' },
+  wireguard: { model: 'wireguard', children: { peers: { model: 'wireguard-peers' } } },
   wifi: { model: 'wifi-interfaces', children: { radio: { model: 'wifi-radios' }, 'registration-table': { model: 'wifi-registration' } } }
  } },
  ip: { children: {
   address: { model: 'addresses' },
+  arp: { model: 'ip-arp' },
   route: { model: 'routes' },
-  firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' } } },
-  'dhcp-server': { model: 'dhcp-servers', children: { lease: { model: 'dhcp-leases' } } },
+  service: { model: 'ip-services' },
+  firewall: { children: { filter: { model: 'fw-filter' }, nat: { model: 'fw-nat' }, 'address-list': { model: 'fw-address-lists' }, connection: { model: 'connections' }, zone: { model: 'fw-zones' } } },
+  'dhcp-server': { model: 'dhcp-servers', children: { network: { model: 'dhcp-networks' }, lease: { model: 'dhcp-leases' }, option: { model: 'dhcp-options' } } },
   dns: { model: 'dns-settings', children: { static: { model: 'dns-static' } } }
  } },
  ipv6: { children: {
   address: { model: 'addresses6' },
+  neighbor: { model: 'ipv6-neighbors' },
   route: { model: 'routes6' },
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
+ routing: { children: { rule: { model: 'routing-rules' } } },
  log: { model: 'log' },
  system: { commands: ['reboot'], children: {
   identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },
