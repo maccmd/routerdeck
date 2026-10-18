@@ -51,3 +51,10 @@ export function clock(milliseconds) {
  const date = new Date(milliseconds);
  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+// A round scale: 1, 2 or 5 times a power of ten, at least the value.
+export function niceMax(value) {
+ if (!(value > 0)) return 1000;
+ const power = 10 ** Math.floor(Math.log10(value));
+ return [1, 2, 5, 10].map(step => step * power).find(step => step >= value);
+}

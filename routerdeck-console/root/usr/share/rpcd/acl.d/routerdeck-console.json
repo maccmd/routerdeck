@@ -5,24 +5,24 @@
 			"cgi-io": [ "backup" ],
 			"ubus": {
 				"iwinfo": [ "assoclist", "devices", "info" ],
-				"luci": [ "getTimezones", "getUnixtime" ],
+				"luci": [ "getRealtimeStats", "getTimezones", "getUnixtime" ],
 				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices", "getWirelessDevices" ],
 				"network": [ "get_proto_handlers" ],
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "fw_counters", "history", "info", "log", "neighbors", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
+				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "fw_counters", "history", "info", "log", "neighbors", "netwatch", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
 			},
-			"uci": [ "ddns", "dhcp", "dropbear", "firewall", "network", "sqm", "system", "ttyd", "uhttpd", "upnpd", "wireless" ]
+			"uci": [ "ddns", "dhcp", "dropbear", "firewall", "network", "routerdeck", "sqm", "system", "ttyd", "uhttpd", "upnpd", "wireless" ]
 		},
 		"write": {
 			"ubus": {
 				"luci": [ "setLocaltime", "setPassword" ],
 				"rc": [ "init" ],
-				"routerdeck": [ "apply", "redo", "safemode", "undo" ],
+				"routerdeck": [ "apply", "redo", "safemode", "undo", "wol" ],
 				"system": [ "reboot" ]
 			}
 		}

@@ -8,7 +8,7 @@ const series = port === '8089' ? '24.10' : '25.12';
 const ssh = (command, input) => execFileSync('sh', ['scripts/vm-ssh.sh', command], { encoding: input ? undefined : 'utf8', input }).toString().trim();
 const password = (await readFile('.cache/vm/password', 'utf8')).trim();
 const manager = series === '25.12' ? { add: 'apk add --allow-untrusted', del: 'apk del' } : { add: 'opkg install', del: 'opkg remove' };
-const FILES = ['/www/routerdeck/index.html', '/usr/share/rpcd/ucode/routerdeck', '/usr/share/rpcd/acl.d/routerdeck-console.json', '/usr/share/ucode/routerdeck/core.uc', '/usr/libexec/routerdeck/safemode-watchdog', '/usr/libexec/routerdeck/diag', '/etc/init.d/routerdeck-safemode'];
+const FILES = ['/www/routerdeck/index.html', '/usr/share/rpcd/ucode/routerdeck', '/usr/share/rpcd/acl.d/routerdeck-console.json', '/usr/share/ucode/routerdeck/core.uc', '/usr/libexec/routerdeck/safemode-watchdog', '/usr/libexec/routerdeck/diag', '/usr/libexec/routerdeck/netwatch', '/etc/init.d/routerdeck-safemode', '/etc/init.d/routerdeck-netwatch'];
 
 async function install() {
  const folder = `dist/packages/${series}`;
@@ -25,8 +25,9 @@ test('install, use, remove and reinstall the console package', async ({ page }) 
  for (const file of FILES) expect(ssh(`ls -ln ${file} | awk '{print $3":"$4}'`)).toBe('0:0');
  expect(ssh('find / -xdev -name "._*" | wc -l')).toBe('0');
  expect(JSON.parse(ssh('ubus call routerdeck info')).api).toBe(1);
- // Started on demand only: nothing runs and nothing is enabled at boot.
- expect(ssh('ls /etc/rc.d | grep -c routerdeck || true')).toBe('0');
+ // Only Netwatch starts at boot, and it runs nothing until hosts are added.
+ expect(ssh('ls /etc/rc.d | grep routerdeck || true')).toMatch(/^(S99routerdeck-netwatch)?$/);
+ expect(ssh("pgrep -f '^/usr/bin/ucode /usr/libexec/routerdeck/netwatch' || echo none")).toBe('none');
 
  await page.goto('/routerdeck/');
  await page.getByLabel('Password', { exact: true }).fill(password);

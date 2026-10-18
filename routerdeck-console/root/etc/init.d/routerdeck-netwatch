@@ -1,0 +1,29 @@
+#!/bin/sh /etc/rc.common
+# RouterDeck Netwatch: pings the hosts listed in /etc/config/routerdeck and
+# runs their up and down commands when a host changes state. Runs only when
+# at least one host is enabled.
+
+START=99
+USE_PROCD=1
+
+count_host() {
+	local disabled
+	config_get_bool disabled "$1" disabled 0
+	[ "$disabled" = 1 ] || HOSTS=$((HOSTS + 1))
+}
+
+start_service() {
+	HOSTS=0
+	config_load routerdeck
+	config_foreach count_host netwatch
+	[ "$HOSTS" -gt 0 ] || return 0
+	procd_open_instance netwatch
+	procd_set_param command /usr/bin/ucode /usr/libexec/routerdeck/netwatch
+	procd_set_param respawn
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger routerdeck
+}

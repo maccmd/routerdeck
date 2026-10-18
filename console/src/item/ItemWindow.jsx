@@ -97,7 +97,9 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
  }
 
  async function save(closeAfter) {
-  if (readOnly || (!creating && !dirty.size)) return closeAfter ? onClose() : undefined;
+  // An action form (Wake on LAN) runs every time, edited or not, and stays open.
+  if (model.action) closeAfter = false;
+  if (readOnly || (!creating && !dirty.size && !model.action)) return closeAfter ? onClose() : undefined;
   let change;
   try {
    change = model.save(values, row, sources.data, { dirty, ...params });
@@ -115,7 +117,7 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
    setErrors({});
    if (closeAfter) return onClose();
    if (creating) created.current = { result, values };
-   else { setEdits({}); setBaseAtEdit({}); }
+   else if (!model.action) { setEdits({}); setBaseAtEdit({}); }
   });
  }
 
@@ -145,9 +147,9 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
     {message && <div class="rd-item-error" role="alert">{message}</div>}
    </div>
    <div class="rd-item-buttons">
-    <button type="submit" class="rd-button" disabled={busy}>OK</button>
-    <button type="button" class="rd-button" onClick={onClose}>Cancel</button>
-    {!readOnly && <button type="button" class="rd-button" disabled={busy || (!creating && !dirty.size)} onClick={() => save(false)}>Apply</button>}
+    <button type="submit" class="rd-button" disabled={busy}>{model.action?.label ?? 'OK'}</button>
+    <button type="button" class="rd-button" onClick={onClose}>{model.action ? 'Close' : 'Cancel'}</button>
+    {!readOnly && !model.action && <button type="button" class="rd-button" disabled={busy || (!creating && !dirty.size)} onClick={() => save(false)}>Apply</button>}
     {row && model.toggle && !readOnly && (
      <button type="button" class="rd-button" disabled={busy || !model.canToggle?.(row)} title={model.canToggle?.(row) ? undefined : model.toggleHint}
       onClick={() => run(model.toggle([row], row.disabled, sources.data))}>{row.disabled ? 'Enable' : 'Disable'}</button>

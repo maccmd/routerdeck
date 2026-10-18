@@ -16,7 +16,9 @@ const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
 
 const dir = ARGV[0];
 const job = read_json(dir + '/args.json', null);
-if (!job || type(job.host) != 'string' || !match(job.host, HOST))
+// A host is needed except for a network scan and an iperf3 server.
+const needs_host = job && !(job.tool == 'scan' || job.tool == 'bandwidth' && job.mode == 'server');
+if (!job || needs_host && (type(job.host) != 'string' || !match(job.host, HOST)))
 	exit(1);
 const started = time();
 
@@ -129,7 +131,78 @@ function traceroute() {
 	}
 }
 
+const UNITS = { '': 1, K: 1e3, M: 1e6, G: 1e9, T: 1e12 };
+
+// iperf3 prints one line per second with --forceflush; each becomes a
+// result as it arrives. The tool's pid lets Stop end a waiting server.
+function bandwidth() {
+	let options = job.mode == 'server'
+		? sprintf('-s -1 -p %d', job.port)
+		: sprintf('%s-c %s -p %d -t %d %s%s', FAMILY, job.host, job.port, job.duration, { receive: '-R ', both: '--bidir ' }[job.direction] ?? '', job.protocol == 'udp' ? sprintf('-u -b %d ', job.bitrate || 10000000) : '');
+	let pipe = popen(sprintf('echo $$ >%s/child.pid; exec iperf3 %s -i 1 --forceflush 2>&1', dir, options), 'r');
+	if (!pipe) {
+		write({ error: 'iperf', message: 'iperf3 could not be started' });
+		return;
+	}
+	let line;
+	while ((line = pipe.read('line')) != null && line != '') {
+		let rate = match(line, /^\[ *[0-9A-Z]+\](\[([A-Z]+)-[CS]\])? +([0-9.]+)-([0-9.]+) +sec +([0-9.]+) ([KMGT]?)Bytes +([0-9.]+) ([KMGT]?)bits\/sec(.*)$/);
+		if (rate) {
+			let summary = match(rate[9], /(sender|receiver)/);
+			write({ role: rate[2] ?? null, start: +rate[3], end: +rate[4], bytes: +rate[5] * UNITS[rate[6]], bps: +rate[7] * UNITS[rate[8]], summary: summary ? summary[1] : null, lost: match(rate[9], /([0-9]+)\/([0-9]+) \(/) ? +match(rate[9], /([0-9]+)\/([0-9]+) \(/)[1] : null });
+		}
+		else if (match(line, /^iperf3: (error|interrupt)/))
+			write({ error: 'iperf', message: trim(replace(line, /^iperf3: /, '')) });
+		else if (match(line, /^(Connecting to|Server listening|Accepted connection)/))
+			write({ status: trim(line) });
+		if (!alive())
+			break;
+	}
+	pipe.close();
+}
+
+function ipv4(text) {
+	let parts = split(text, '.');
+	return ((+parts[0] * 256 + +parts[1]) * 256 + +parts[2]) * 256 + +parts[3];
+}
+const dotted = value => sprintf('%d.%d.%d.%d', (value >> 24) & 255, (value >> 16) & 255, (value >> 8) & 255, value & 255);
+
+// Pings every host address of the network, 32 at a time, then adds the
+// MAC addresses the neighbour table learned on the way.
+function scan() {
+	let parts = split(job.network, '/'), prefix = +parts[1];
+	let size = 1 << (32 - prefix), base = ipv4(parts[0]) - ipv4(parts[0]) % size;
+	let hosts = [];
+	for (let i = 1; i < size - 1; i++)
+		push(hosts, dotted(base + i));
+	write({ total: length(hosts) });
+	for (let first = 0; first < length(hosts) && alive(); first += 32) {
+		let batch = slice(hosts, first, first + 32), script = '';
+		for (let i = 0; i < length(batch); i++)
+			script += sprintf('ping -c 1 -W 1 %s >%s/scan.%d 2>&1 & ', batch[i], dir, i);
+		system([ '/bin/sh', '-c', script + 'wait' ]);
+		for (let i = 0; i < length(batch); i++) {
+			let reply = match(open(dir + '/scan.' + i, 'r')?.read('all') ?? '', /ttl=([0-9]+) time=([0-9.]+) ms/);
+			if (reply)
+				write({ address: batch[i], time: +reply[2], ttl: +reply[1] });
+		}
+		write({ scanned: min(first + 32, length(hosts)) });
+	}
+	let macs = {};
+	for (let line in split(run('ip -4 neigh'), '\n')) {
+		let words = split(trim(line), /\s+/);
+		let mac = index(words, 'lladdr');
+		if (mac > 0 && words[mac + 1])
+			macs[words[0]] = words[mac + 1];
+	}
+	write({ macs });
+}
+
 if (job.tool == 'ping')
 	ping();
 else if (job.tool == 'traceroute')
 	traceroute();
+else if (job.tool == 'bandwidth')
+	bandwidth();
+else if (job.tool == 'scan')
+	scan();

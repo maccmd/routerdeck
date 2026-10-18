@@ -8,7 +8,8 @@
 import { MODELS } from '../model/index.js';
 import { ValidationError } from '../model/common.js';
 import { tokenize, quote, propertyName, pick, CliError } from './parser.js';
-import { pingView, traceView, ms } from '../model/tools.js';
+import { pingView, traceView, bandwidthView, scanView, ms } from '../model/tools.js';
+import { bitrate } from '../lib/format.js';
 
 const TREE = {
  interface: { model: 'interfaces', export: false, children: {
@@ -45,7 +46,7 @@ const TREE = {
   logging: { model: 'system-logging' }, package: { model: 'system-packages' }, scheduler: { model: 'system-scheduler' },
   startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }
  } },
- tool: { commands: ['traceroute', 'torch'] }
+ tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' } } }
 };
 
 function build(spec, name, parent) {
@@ -61,7 +62,7 @@ const ROOT_COMMANDS = ['ping', 'undo', 'redo', 'export', 'quit'];
 const HELP = {
  print: 'Print the items', find: 'Show the numbers of matching items', add: 'Create a new item', set: 'Change item properties', remove: 'Remove items',
  enable: 'Enable items', disable: 'Disable items', comment: 'Set the comment of items', export: 'Print the configuration as commands',
- ping: 'Send ICMP echo requests', traceroute: 'Trace the route to a host', torch: 'Watch traffic per connection (opens a window)',
+ ping: 'Send ICMP echo requests', traceroute: 'Trace the route to a host', 'bandwidth-test': 'Measure throughput with iperf3', 'ip-scan': 'Find hosts that answer ping on a network', wol: 'Wake a computer with a magic packet', torch: 'Watch traffic per connection (opens a window)',
  undo: 'Undo the last change', redo: 'Redo the last undone change', quit: 'Close this terminal', reboot: 'Reboot the router (asks first)', '..': 'Go up one level', '/': 'Go to the top level'
 };
 const YES = ['yes', 'true', 'on', '1'], NO = ['no', 'false', 'off', '0'];
@@ -554,6 +555,57 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
   if (last?.error || view.error) throw new CliError(last?.error ?? view.error);
  }
 
+ function named(args, names) {
+  const values = {};
+  for (const word of args) {
+   if (word.op !== '=') continue;
+   const name = pick(names, word.key);
+   if (!name) throw new CliError(`expected end of command: unknown property ${word.key}`);
+   values[name] = word.value;
+  }
+  return values;
+ }
+
+ async function bandwidthTest(args) {
+  const values = named(args, ['address', 'port', 'duration', 'direction', 'protocol', 'mode']);
+  const address = values.address ?? args.find(word => !word.op)?.text;
+  const request = { tool: 'bandwidth', mode: values.mode === 'server' ? 'server' : 'client', host: address, port: Number(values.port ?? 5201), duration: Number(values.duration ?? 10), direction: values.direction ?? 'send', protocol: values.protocol ?? 'tcp' };
+  if (request.mode === 'client' && !address) throw new CliError('bandwidth-test needs an address of a host running iperf3 -s');
+  let printed = 0, last = null;
+  const job = createJob(state => {
+   last = state;
+   const view = bandwidthView(state.results, request);
+   for (; printed < view.rows.length; printed++) {
+    const cells = view.rows[printed].cells;
+    out.line(`  ${cells.time.padEnd(8)} ${cells.direction.padEnd(8)} ${cells.rate.padStart(12)}`);
+   }
+  });
+  running = job;
+  try { await job.start(request); } finally { running = null; }
+  const view = bandwidthView(last?.results ?? [], request);
+  if (last?.error || view.error) throw new CliError(last?.error ?? view.error);
+  const totals = Object.entries(view.totals).map(([direction, value]) => `${direction}-average=${bitrate(value).replace(' ', '')}`);
+  if (totals.length) out.line(`  ${totals.join(' ')}`);
+ }
+
+ async function ipScan(args) {
+  const values = named(args, ['network']);
+  const network = values.network ?? args.find(word => !word.op)?.text;
+  if (!network) throw new CliError('ip-scan needs network=a.b.c.d/nn');
+  const block = out.live();
+  let last = null;
+  const job = createJob(state => {
+   last = state;
+   const view = scanView(state.results);
+   block.update([' ADDRESS          MAC-ADDRESS        TIME', ...view.rows.map(row => ` ${row.cells.address.padEnd(16)} ${row.cells.mac.padEnd(18)} ${row.cells.time}`.trimEnd()), view.total ? ` ${view.scanned} of ${view.total} checked` : '']);
+  });
+  running = job;
+  try { await job.start({ tool: 'scan', network }); } finally { running = null; block.end(); }
+  const view = scanView(last?.results ?? []);
+  if (last?.error || view.error) throw new CliError(last?.error ?? view.error);
+ }
+
+
  async function execute(node, command, args) {
   switch (command) {
    case 'print': return print(node, args);
@@ -567,6 +619,14 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
    case 'export': return runExport(node.model || node === ROOT || Object.keys(node.children).length ? node : ROOT, args);
    case 'ping': return ping(args);
    case 'traceroute': return traceroute(args);
+   case 'bandwidth-test': return bandwidthTest(args);
+   case 'ip-scan': return ipScan(args);
+   case 'wol': {
+    const values = named(args, ['mac', 'interface']);
+    if (!values.mac) throw new CliError('wol needs mac=00:11:22:33:44:55');
+    await apply({ description: `Wake ${values.mac}`, call: ['routerdeck', 'wol', { mac: values.mac.toLowerCase(), interface: values.interface ?? 'br-lan' }] });
+    return out.line(`magic packet sent to ${values.mac.toLowerCase()}`);
+   }
    case 'torch': openWindow('tool-torch'); return out.line('Torch is open in its own window');
    case 'reboot':
     pending = { question: 'Reboot, yes? [y/N]: ', action: async () => { await reboot(); out.line('system will reboot shortly'); } };

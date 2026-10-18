@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Ping, Traceroute and Torch: rows from diagnostic job results and from
 // connection-tracking samples. The windows are in windows/ToolWindows.jsx.
-import { bitrate, rate } from '../lib/format.js';
-import { inPrefix, parseCidr, parseCidr6 } from '../lib/ip.js';
+import { bitrate, rate, bytes, uptime } from '../lib/format.js';
+import { inPrefix, parseCidr, parseCidr6, isMac, addressKey } from '../lib/ip.js';
+import { sections, truthy, list, invalid, compact } from './common.js';
 
 // Host names and addresses the plugin accepts; no leading '-'.
 export const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
@@ -195,3 +196,145 @@ export function torchView(sample, { device = '', routes = [], local = new Set(),
  })).sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
  return { rows, totals, invalid: [!addressMatcher(src) && 'src', !addressMatcher(dst) && 'dst'].filter(Boolean) };
 }
+
+/* --- Bandwidth test (iperf3) ------------------------------------------- */
+
+// Intervals as rows, per direction; the summary lines give the averages.
+// Without --bidir roles, the direction follows the test: a client sends
+// unless it receives (-R); a one-off server receives.
+export function bandwidthView(results, job = {}) {
+ const rows = [], points = [], totals = {};
+ let error = null, status = '';
+ const fallback = job.mode === 'server' ? 'rx' : job.direction === 'receive' ? 'rx' : 'tx';
+ for (const item of results) {
+  if (item.error) error = item.message ?? item.error;
+  else if (item.status) status = item.status;
+  else if (Number.isFinite(item.bps)) {
+   const direction = item.role ? (item.role === 'RX' ? 'rx' : 'tx') : fallback;
+   if (item.summary) {
+    // Both ends report; the receiver's figure is what arrived.
+    if (!totals[direction] || item.summary === 'receiver') totals[direction] = item.bps;
+    continue;
+   }
+   rows.push({ key: `${direction}:${item.start}`, cells: { time: `${item.start.toFixed(0)}-${item.end.toFixed(0)} s`, direction: direction === 'tx' ? 'send' : 'receive', rate: bitrate(item.bps), transferred: bytes(item.bytes), lost: item.lost === null || item.lost === undefined ? '' : String(item.lost) } });
+   const at = item.end * 1000, point = points.find(entry => entry.t === at) ?? (points.push({ t: at }), points.at(-1));
+   point[direction] = item.bps;
+  }
+ }
+ return { rows, points, totals, error, status };
+}
+
+/* --- IP scan ----------------------------------------------------------- */
+
+export function scanView(results, data = {}) {
+ const found = new Map(), names = new Map();
+ for (const lease of data.leases?.dhcp_leases ?? []) if (lease.hostname) names.set(lease.ipaddr, lease.hostname);
+ for (const host of sections(data['uci:dhcp'], 'host')) for (const address of list(host.ip)) if (host.name) names.set(address, host.name);
+ let total = 0, scanned = 0, macs = {}, error = null;
+ for (const item of results) {
+  if (item.error) error = item.message ?? item.error;
+  if (item.total) total = item.total;
+  if (item.scanned) scanned = item.scanned;
+  if (item.macs) macs = item.macs;
+  if (item.address) found.set(item.address, item);
+ }
+ const rows = [...found.values()].sort((a, b) => addressKey(a.address).localeCompare(addressKey(b.address))).map(item => ({
+  key: item.address, cells: { address: item.address, mac: (macs[item.address] ?? '').toUpperCase(), name: names.get(item.address) ?? '', time: ms(item.time), ttl: String(item.ttl ?? '') }
+ }));
+ return { rows, total, scanned, error, done: results.some(item => item.macs) };
+}
+
+/* --- Netwatch ---------------------------------------------------------- */
+
+export const netwatch = {
+ id: 'netwatch',
+ noun: 'Netwatch Host',
+ sources: ['uci:routerdeck', 'netwatch'],
+ columns: [
+  { id: 'flags', label: '', width: 30 },
+  { id: 'host', label: 'Host', width: 160, sort: addressKey },
+  { id: 'interval', label: 'Interval', width: 70, align: 'right', sort: value => parseFloat(value) || 0 },
+  { id: 'timeout', label: 'Timeout', width: 70, align: 'right' },
+  { id: 'status', label: 'Status', width: 70 },
+  { id: 'since', label: 'Since', width: 110, sort: (value, row) => row.age ?? Infinity },
+  { id: 'rtt', label: 'Last RTT', width: 80, align: 'right' }
+ ],
+ flagLegend: { X: 'disabled', U: 'up', D: 'down' },
+ defaultSort: null,
+ status: data => data.netwatch && !data.netwatch.running && sections(data['uci:routerdeck'], 'netwatch').some(section => !truthy(section.disabled)) ? 'The netwatch service is not running yet' : 'Checked on the router by the routerdeck-netwatch service, also while this console is closed',
+ rows(data) {
+  const live = data.netwatch?.hosts ?? {}, now = data.netwatch?.now;
+  return sections(data['uci:routerdeck'], 'netwatch').map(section => {
+   const state = live[section['.name']], disabled = truthy(section.disabled);
+   const age = state?.since && now ? now - state.since : null;
+   return {
+    key: section['.name'], section: section['.name'], disabled, comment: section.comment, age,
+    tone: state?.status === 'down' && !disabled ? 'error' : undefined,
+    flags: (disabled ? 'X' : '') + (!disabled && state?.status === 'up' ? 'U' : '') + (!disabled && state?.status === 'down' ? 'D' : ''),
+    cells: { host: section.host ?? '', interval: `${section.interval ?? '10'} s`, timeout: `${section.timeout ?? '1'} s`, status: disabled ? '' : state?.status ?? 'unknown', since: age !== null ? `${uptime(age)} ago` : '', rtt: ms(state?.rtt) }
+   };
+  });
+ },
+ itemTitle: row => `Netwatch <${row?.cells.host || 'new'}>`,
+ itemStatus: row => [row.disabled ? 'disabled' : row.cells.status],
+ canAdd: () => true,
+ canRemove: () => true,
+ canToggle: () => true,
+ canComment: () => true,
+ fields: () => [
+  { id: 'host', label: 'Host', type: 'text', placeholder: '8.8.8.8 or a name' },
+  { id: 'interval', label: 'Interval (s)', type: 'number' },
+  { id: 'timeout', label: 'Timeout (s)', type: 'number' },
+  { id: 'up', label: 'On Up', type: 'text', tab: 'Up', placeholder: 'a shell command, e.g. logger -t wan up' },
+  { id: 'down', label: 'On Down', type: 'text', tab: 'Down', placeholder: 'a shell command, e.g. /etc/init.d/network restart' }
+ ],
+ values(row, data) {
+  const section = sections(data['uci:routerdeck'], 'netwatch').find(item => item['.name'] === row.section) ?? {};
+  return { host: section.host ?? '', interval: section.interval ?? '10', timeout: section.timeout ?? '1', up: section.up ?? '', down: section.down ?? '' };
+ },
+ defaults: () => ({ host: '', interval: '10', timeout: '1', up: '', down: '' }),
+ save(values, row) {
+  if (!HOST.test(values.host.trim())) invalid('host', 'Enter an address or host name');
+  if (!(/^\d+$/.test(values.interval) && Number(values.interval) >= 1 && Number(values.interval) <= 86400)) invalid('interval', 'Interval is 1 to 86400 seconds');
+  if (!(/^\d+$/.test(values.timeout) && Number(values.timeout) >= 1 && Number(values.timeout) <= 10)) invalid('timeout', 'Timeout is 1 to 10 seconds');
+  for (const id of ['up', 'down']) if (/\n/.test(values[id])) invalid(id, 'A command is one line');
+  const options = compact({ host: values.host.trim(), interval: values.interval, timeout: values.timeout, up: values.up, down: values.down });
+  return row
+   ? { description: `Change netwatch ${options.host}`, ops: [{ op: 'set', config: 'routerdeck', section: row.section, values: options }] }
+   : { description: `Watch ${options.host}`, ops: [{ op: 'add', config: 'routerdeck', type: 'netwatch', values: options }] };
+ },
+ remove: rows => ({ description: `Stop watching ${rows.map(row => row.cells.host).join(', ')}`, ops: rows.map(row => ({ op: 'delete', config: 'routerdeck', section: row.section })) }),
+ toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} netwatch ${rows.map(row => row.cells.host).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'routerdeck', section: row.section, values: { disabled: enable ? null : '1' } })) }),
+ comment: (rows, comment) => ({ description: `Comment netwatch ${rows.map(row => row.cells.host).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'routerdeck', section: row.section, values: { comment: comment || null } })) })
+};
+
+/* --- Wake on LAN ------------------------------------------------------- */
+
+export const wakeOnLan = {
+ id: 'tool-wol',
+ noun: 'Wake on LAN',
+ singleton: true,
+ action: { label: 'Send' },
+ sources: ['leases', 'uci:dhcp', 'devices'],
+ rows: () => [{ key: 'wol', section: 'wol' }],
+ itemTitle: () => 'Wake on LAN',
+ itemStatus: () => ['etherwake'],
+ fields(data) {
+  const known = new Map();
+  for (const host of sections(data['uci:dhcp'], 'host')) for (const mac of list(host.mac)) if (isMac(mac)) known.set(mac.toLowerCase(), host.name ?? '');
+  for (const lease of data.leases?.dhcp_leases ?? []) if (isMac(lease.macaddr ?? '')) known.set(lease.macaddr.toLowerCase(), known.get(lease.macaddr.toLowerCase()) || lease.hostname || '');
+  const devices = Object.values(data.devices ?? {}).filter(device => device.up && !device.flags?.loopback && device.name !== 'lo');
+  return [
+   { id: 'mac', label: 'MAC Address', type: 'combo', options: [...known].map(([value, name]) => ({ value, label: name ? `${value} ${name}` : value })) },
+   { id: 'interface', label: 'Interface', type: 'select', options: devices.map(device => ({ value: device.name, label: device.name })) },
+   { id: 'note', label: '', type: 'note', value: () => 'Sends a magic packet on that network. The computer must have wake on LAN enabled in its firmware and network card.' }
+  ];
+ },
+ values: (row, data) => ({ mac: '', interface: data?.devices?.['br-lan'] ? 'br-lan' : '' }),
+ save(values) {
+  const mac = String(values.mac ?? '').trim().split(/\s+/)[0];
+  if (!isMac(mac)) invalid('mac', 'Enter a MAC address such as 00:11:22:33:44:55');
+  if (!values.interface) invalid('interface', 'Choose the network the computer is on');
+  return { description: `Wake ${mac}`, call: ['routerdeck', 'wol', { mac: mac.toLowerCase(), interface: values.interface }], notice: `Magic packet sent to ${mac.toLowerCase()} on ${values.interface}` };
+ }
+};

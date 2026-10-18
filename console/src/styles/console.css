@@ -182,6 +182,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-field-control [aria-invalid="true"] { border-color: var(--rd-red) !important; }
 .rd-field-control :disabled { background: var(--rd-window) !important; color: var(--rd-muted); }
 .rd-field-static { display: block; padding-top: 3px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.rd-graph { margin: 0; }
+.rd-graph svg { display: block; width: 100%; background: var(--rd-list); border: 1px solid var(--rd-border-soft); }
+.rd-graph-grid { stroke: var(--rd-border-soft); stroke-width: 1; }
+.rd-graph-line { fill: none; stroke-width: 1.5; }
+.rd-graph-line.tone-tx { stroke: #d9534f; }
+.rd-graph-line.tone-rx { stroke: #2f80ed; }
+.rd-graph figcaption { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 3px; color: var(--rd-muted); font-size: 11px; }
+.rd-graph-key.tone-tx::before, .rd-graph-key.tone-rx::before { content: ""; display: inline-block; width: 10px; height: 2px; margin-right: 4px; vertical-align: middle; background: #d9534f; }
+.rd-graph-key.tone-rx::before { background: #2f80ed; }
+.rd-graph-scale { flex: 1; }
+.rd-diag-graph { padding: 6px 8px 4px; border-top: 1px solid var(--rd-border-soft); }
+.rd-graphs { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-content: start; gap: 10px; min-height: 0; overflow: auto; padding: 10px; }
+.rd-graphs-item h3 { margin: 0 0 3px; font-size: 12px; font-weight: 600; }
+.rd-graphs-note { grid-column: 1 / -1; margin: 0; color: var(--rd-muted); font-size: 11px; }
 .rd-field-note { margin: 0; padding-top: 3px; color: var(--rd-muted); line-height: 1.4; }
 .rd-field.is-wide .rd-field-static { font-family: var(--rd-mono); }
 .rd-field-error { margin-top: 2px; color: var(--rd-red); }

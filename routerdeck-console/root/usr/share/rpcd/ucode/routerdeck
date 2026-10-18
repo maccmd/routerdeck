@@ -277,11 +277,15 @@ function int_in(value, low, high, fallback) {
 	return type(value) == 'int' && value >= low && value <= high ? value : fallback;
 }
 
+const NETWORK = /^([0-9]{1,3}\.){3}[0-9]{1,3}\/(2[2-9]|30)$/;
+
 function diag_start(args) {
-	if (!(args.tool in [ 'ping', 'traceroute' ]))
+	if (!(args.tool in [ 'ping', 'traceroute', 'bandwidth', 'scan' ]))
 		return failure('invalid', 'Unknown tool');
-	if (type(args.host) != 'string' || !match(args.host, HOST))
-		return failure('invalid', 'Enter an address or host name');
+	if (args.tool == 'bandwidth' && !executable('/usr/bin/iperf3'))
+		return failure('missing', 'Bandwidth tests need the iperf3 package');
+	if (args.tool == 'scan' ? type(args.network) != 'string' || !match(args.network, NETWORK) : args.tool == 'bandwidth' && args.mode == 'server' ? false : type(args.host) != 'string' || !match(args.host, HOST))
+		return failure('invalid', args.tool == 'scan' ? 'Enter a network from /22 to /30, such as 192.168.1.0/24' : 'Enter an address or host name');
 	ensure_dirs();
 	if (job_sweep() >= JOB_LIMIT)
 		return failure('busy', 'Too many pings and traceroutes are running; stop one first');
@@ -290,7 +294,10 @@ function diag_start(args) {
 		tool: args.tool, host: args.host, family: args.family == 4 || args.family == 6 ? args.family : 0,
 		size: int_in(args.size, 16, 65500, 56), count: int_in(args.count, 0, 100000, 0),
 		interval: int_in(args.interval, 200, 60000, 1000), timeout: int_in(args.timeout, 1, 10, 1),
-		max: int_in(args.max, 1, 30, 15), protocol: args.protocol == 'udp' ? 'udp' : 'icmp'
+		max: int_in(args.max, 1, 30, 15), protocol: args.protocol == 'udp' ? 'udp' : args.tool == 'bandwidth' ? 'tcp' : 'icmp',
+		mode: args.mode == 'server' ? 'server' : 'client', direction: args.direction in [ 'receive', 'both' ] ? args.direction : 'send',
+		duration: int_in(args.duration, 1, 300, 10), port: int_in(args.port, 1, 65535, 5201), bitrate: int_in(args.bitrate, 0, 10000000, 0),
+		network: args.tool == 'scan' ? args.network : null
 	};
 	let id = job_id(), dir = DIAG + '/' + id;
 	if (length(id) != 16 || !mkdir(dir, 0700))
@@ -332,8 +339,13 @@ function diag(args) {
 		return diag_poll(args);
 	if (args.action == 'stop') {
 		let dir = job_dir(args);
-		if (dir)
+		if (dir) {
 			writefile(dir + '/stop', '');
+			// A tool waiting for input (an iperf3 server) is ended directly.
+			let child = trim(readfile(dir + '/child.pid') ?? '');
+			if (match(child, /^[0-9]+$/))
+				system([ 'kill', child ]);
+		}
 		return { ok: true };
 	}
 	return failure('invalid', 'Unknown action');
@@ -471,6 +483,27 @@ function qdisc() {
 		}
 	}
 	return { devices };
+}
+
+/* --- Netwatch and Wake on LAN ----------------------------------------- */
+
+function netwatch() {
+	let state = read_json(RUN + '/netwatch.json', null);
+	return { running: state != null && time() - (state.now ?? 0) < 15, now: time(), hosts: state?.hosts ?? {} };
+}
+
+const MAC = /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/;
+const DEVICE = /^[A-Za-z0-9_.@-]{1,15}$/;
+
+function wol(args) {
+	if (!executable('/usr/bin/etherwake'))
+		return failure('missing', 'Wake on LAN needs the etherwake package');
+	if (type(args.mac) != 'string' || !match(args.mac, MAC))
+		return failure('invalid', 'Enter a MAC address such as 00:11:22:33:44:55');
+	if (type(args.interface) != 'string' || !match(args.interface, DEVICE))
+		return failure('invalid', 'Choose the device the computer is on');
+	let result = run(sprintf('etherwake -i %s %s', args.interface, args.mac));
+	return result.code == 0 ? { ok: true } : failure('failed', trim(result.output) || 'etherwake failed');
 }
 
 /* --- Packages and scheduler ------------------------------------------- */
@@ -939,7 +972,9 @@ return {
 						wireguard: executable('/usr/bin/wg'),
 						upnp: executable('/usr/sbin/miniupnpd'),
 						ddns: executable('/usr/lib/ddns/dynamic_dns_updater.sh'),
-						sqm: executable('/usr/lib/sqm/run.sh')
+						sqm: executable('/usr/lib/sqm/run.sh'),
+						iperf3: executable('/usr/bin/iperf3'),
+						etherwake: executable('/usr/bin/etherwake')
 					}
 				};
 			}
@@ -963,7 +998,7 @@ return {
 			call: () => terminal()
 		},
 		diag: {
-			args: { action: 'action', id: 'id', tool: 'tool', host: 'host', family: 4, size: 4, count: 4, interval: 4, timeout: 4, max: 4, protocol: 'protocol', from: 4 },
+			args: { action: 'action', id: 'id', tool: 'tool', host: 'host', family: 4, size: 4, count: 4, interval: 4, timeout: 4, max: 4, protocol: 'protocol', from: 4, mode: 'mode', direction: 'direction', duration: 4, port: 4, bitrate: 4, network: 'network' },
 			call: request => diag(request.args)
 		},
 		history: {
@@ -977,6 +1012,13 @@ return {
 		},
 		upnp: {
 			call: () => upnp()
+		},
+		netwatch: {
+			call: () => netwatch()
+		},
+		wol: {
+			args: { mac: 'mac', interface: 'interface' },
+			call: request => wol(request.args)
 		},
 		ddns: {
 			call: () => ddns()

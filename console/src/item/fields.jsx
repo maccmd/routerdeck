@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { TrafficGraph } from '../shell/graph.jsx';
 // Form controls for object windows. Values are plain strings, booleans,
 // arrays (lists, multi-select) or { negate, value } for "!"-capable fields.
 
@@ -33,6 +34,9 @@ export function Field({ field: spec, value, values, onChange, error, disabled })
  switch (field.type) {
   case 'static':
    control = <output id={id} class="rd-field-static" aria-labelledby={id + '-label'}>{field.value ? field.value(values) : Array.isArray(value) ? value.join(', ') : value || '—'}</output>;
+   break;
+  case 'graph':
+   control = <TrafficGraph points={field.series(values)} label={field.graphLabel ?? 'Traffic'} />;
    break;
   case 'note':
    control = <p id={id} class="rd-field-note">{field.value(values)}</p>;

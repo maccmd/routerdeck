@@ -41,6 +41,11 @@ export const WINDOW_KINDS = {
  'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
  'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },
  'tool-torch': { title: 'Torch', size: { w: 980, h: 480 }, multi: true, body: 'torch' },
+ 'tool-bandwidth': { title: 'Bandwidth Test', size: { w: 760, h: 520 }, multi: true, body: 'bandwidth' },
+ 'tool-scan': { title: 'IP Scan', size: { w: 700, h: 440 }, multi: true, body: 'scan' },
+ 'tool-graphs': { title: 'Graphs', size: { w: 900, h: 560 }, body: 'graphs' },
+ 'tool-netwatch': { title: 'Netwatch', size: { w: 700, h: 300 }, tabs: [{ label: 'Netwatch', model: 'netwatch' }] },
+ 'tool-wol': { title: 'Wake on LAN', size: { w: 520, h: 230 }, tabs: [{ label: 'Wake on LAN', model: 'tool-wol' }] },
  // New Terminal is the RouterOS-style command line; New Shell is ash via ttyd.
  terminal: { title: 'Terminal', size: { w: 760, h: 440 }, multi: true, body: 'cli' },
  shell: { title: 'Shell', size: { w: 720, h: 440 }, multi: true, body: 'shell' },

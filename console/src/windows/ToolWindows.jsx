@@ -10,7 +10,8 @@ import { createJob } from '../api/diag.js';
 import { useSources } from '../api/sources.js';
 import { errorText } from '../api/actions.js';
 import { focusAfterClose, focusWindow } from '../mdi/focus.js';
-import { HOST, ms, pingView, traceView, flowSample, routeIndex, localAddresses, torchDevices, torchView } from '../model/tools.js';
+import { HOST, ms, pingView, traceView, flowSample, routeIndex, localAddresses, torchDevices, torchView, bandwidthView, scanView } from '../model/tools.js';
+import { TrafficGraph } from '../shell/graph.jsx';
 import { bitrate, rate } from '../lib/format.js';
 
 function useJob() {
@@ -266,5 +267,116 @@ export function TorchWindow({ win, active }) {
    <Results columns={TORCH_COLUMNS} rows={rows} label="Torch traffic" empty={running ? 'No matching traffic' : 'Press Start to watch traffic'}
     sort={sort} onSort={id => setSort(current => current?.id === id ? (current.dir === 'desc' ? { id, dir: 'asc' } : null) : { id, dir: 'desc' })} />
   </ToolLayout>
+ );
+}
+
+const BANDWIDTH_COLUMNS = [
+ { id: 'time', label: 'Time', width: 80 },
+ { id: 'direction', label: 'Direction', width: 80 },
+ { id: 'rate', label: 'Rate', width: 110, align: 'right' },
+ { id: 'transferred', label: 'Transferred', width: 110, align: 'right' },
+ { id: 'lost', label: 'Lost', width: 60, align: 'right' }
+];
+
+// iperf3 to or from another iperf3; the router can also wait as a one-off
+// server for a test started on a computer.
+export function BandwidthWindow({ win }) {
+ const form = useForm(win, { mode: 'client', host: '', port: '5201', direction: 'send', protocol: 'tcp', bitrate: '10000', duration: '10' });
+ const [state, job] = useJob();
+ const [request, setRequest] = useState({});
+ const view = useMemo(() => bandwidthView(state.results, request), [state.results, request]);
+ const server = form.values.mode === 'server';
+ function start() {
+  const readersFor = {
+   port: readers.whole(1, 65535), duration: readers.whole(1, 300),
+   ...(server ? {} : { host: readers.host }),
+   ...(form.values.protocol === 'udp' ? { bitrate: readers.whole(1, 10000000) } : {})
+  };
+  const { args, errors, ok } = readForm(form.values, readersFor);
+  form.setErrors(errors);
+  if (!ok) return;
+  const next = { tool: 'bandwidth', mode: form.values.mode, direction: form.values.direction, protocol: form.values.protocol, ...args, bitrate: args.bitrate ? args.bitrate * 1000 : 0 };
+  form.remember(server ? 'Bandwidth Test server' : `Bandwidth Test ${args.host}`);
+  setRequest(next);
+  job.start(next);
+ }
+ const fields = [
+  { id: 'mode', label: 'Mode', type: 'select', options: [{ value: 'client', label: 'test to another iperf3 server' }, { value: 'server', label: 'wait for one test (server)' }] },
+  { id: 'host', label: 'Test To', type: 'text', placeholder: 'address of a host running iperf3 -s', visible: values => values.mode !== 'server' },
+  { id: 'port', label: 'Port', type: 'number' },
+  { id: 'direction', label: 'Direction', type: 'select', options: [{ value: 'send', label: 'send' }, { value: 'receive', label: 'receive' }, { value: 'both', label: 'both' }], visible: values => values.mode !== 'server' },
+  { id: 'protocol', label: 'Protocol', type: 'select', options: [{ value: 'tcp', label: 'TCP' }, { value: 'udp', label: 'UDP' }], visible: values => values.mode !== 'server' },
+  { id: 'bitrate', label: 'UDP Rate (kbit/s)', type: 'number', visible: values => values.mode !== 'server' && values.protocol === 'udp' },
+  { id: 'duration', label: 'Duration (s)', type: 'number', visible: values => values.mode !== 'server' }
+ ].filter(field => field.visible?.(form.values) ?? true);
+ const error = state.error ?? view.error;
+ return (
+  <ToolLayout win={win} fields={fields} values={form.values} errors={form.errors} onChange={form.change} running={state.running} onStart={start} onStop={() => job.stop()}
+   status={error ? <span class="rd-diag-error">{error}</span> : (
+    <>
+     {Number.isFinite(view.totals.tx) && <span>send average {bitrate(view.totals.tx)}</span>}
+     {Number.isFinite(view.totals.rx) && <span>receive average {bitrate(view.totals.rx)}</span>}
+     <span class="rd-status-note">{state.running ? view.status || 'running' : view.status && !view.rows.length ? view.status : ''}</span>
+    </>
+   )}>
+   <div class="rd-diag-graph"><TrafficGraph points={view.points} seconds={Math.max(10, Number(request.duration) || 10)} height={90} label="Bandwidth test" lines={[{ key: 'tx', label: 'Send', tone: 'tx' }, { key: 'rx', label: 'Receive', tone: 'rx' }]} /></div>
+   <Results columns={BANDWIDTH_COLUMNS} rows={view.rows} label="Bandwidth test intervals" empty={state.running ? 'Waiting for the first second…' : 'iperf3 must run on the other end (iperf3 -s), or choose server mode here'} follow />
+  </ToolLayout>
+ );
+}
+
+const SCAN_COLUMNS = [
+ { id: 'address', label: 'Address', width: 130 },
+ { id: 'mac', label: 'MAC Address', width: 140 },
+ { id: 'name', label: 'Host Name', width: 150 },
+ { id: 'time', label: 'Time', width: 80, align: 'right' },
+ { id: 'ttl', label: 'TTL', width: 50, align: 'right' }
+];
+
+export function ScanWindow({ win, active }) {
+ const { data } = useSources(['ifaces', 'leases', 'uci:dhcp'], active);
+ const lan = (data.ifaces ?? []).find(item => item.interface === 'lan')?.['ipv4-address']?.[0];
+ const suggestion = lan ? `${lan.address.split('.').slice(0, 3).join('.')}.0/${Math.max(22, lan.mask)}` : '';
+ const form = useForm(win, { network: '' });
+ const [state, job] = useJob();
+ const view = useMemo(() => scanView(state.results, data), [state.results, data.leases, data['uci:dhcp']]);
+ const values = { network: form.values.network || suggestion };
+ function start() {
+  const network = values.network.trim();
+  if (!/^(\d{1,3}\.){3}\d{1,3}\/(2[2-9]|30)$/.test(network)) { form.setErrors({ network: 'Enter a network from /22 to /30, such as 192.168.1.0/24' }); return; }
+  form.setErrors({});
+  form.remember(`IP Scan ${network}`);
+  job.start({ tool: 'scan', network });
+ }
+ const error = state.error ?? view.error;
+ return (
+  <ToolLayout win={win} fields={[{ id: 'network', label: 'Network', type: 'text', placeholder: '192.168.1.0/24' }]} values={values} errors={form.errors} onChange={form.change} running={state.running} onStart={start} onStop={() => job.stop()}
+   status={error ? <span class="rd-diag-error">{error}</span> : (
+    <>
+     <span>{view.rows.length} answered</span>
+     {view.total > 0 && <span>{view.scanned} of {view.total} addresses checked</span>}
+     <span class="rd-status-note">{state.running ? 'scanning' : 'devices that block ping do not show'}</span>
+    </>
+   )}>
+   <Results columns={SCAN_COLUMNS} rows={view.rows} label="IP scan results" empty={state.running ? 'Scanning…' : 'Press Start to ping every address of the network'} />
+  </ToolLayout>
+ );
+}
+
+// Live traffic of every running device, from the rates the console samples.
+export function GraphsWindow({ active }) {
+ const { data } = useSources(['devices'], active);
+ const devices = Object.values(data.devices ?? {}).filter(device => device.up && !device.flags?.loopback && device.name !== 'lo').sort((a, b) => a.name.localeCompare(b.name));
+ return (
+  <div class="rd-graphs">
+   {!devices.length && <p class="rd-muted">Waiting for interface data…</p>}
+   {devices.map(device => (
+    <section key={device.name} class="rd-graphs-item" aria-label={`${device.name} traffic`}>
+     <h3>{device.name}</h3>
+     <TrafficGraph points={device.history ?? []} height={70} label={`${device.name} traffic`} />
+    </section>
+   ))}
+   <p class="rd-graphs-note">Rates are sampled every second while a window needs them; the last five minutes are kept in this browser.</p>
+  </div>
  );
 }

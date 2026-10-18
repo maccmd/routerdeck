@@ -45,7 +45,12 @@ export const MENU = [
  { id: 'tools', label: 'Tools', icon: 'tools', children: [
   { id: 'tool-ping', label: 'Ping', window: 'tool-ping' },
   { id: 'tool-traceroute', label: 'Traceroute', window: 'tool-traceroute' },
-  { id: 'tool-torch', label: 'Torch', window: 'tool-torch' }
+  { id: 'tool-torch', label: 'Torch', window: 'tool-torch' },
+  { id: 'tool-bandwidth', label: 'Bandwidth Test', window: 'tool-bandwidth', requires: 'iperf3' },
+  { id: 'tool-scan', label: 'IP Scan', window: 'tool-scan' },
+  { id: 'tool-netwatch', label: 'Netwatch', window: 'tool-netwatch' },
+  { id: 'tool-wol', label: 'Wake on LAN', window: 'tool-wol', requires: 'etherwake' },
+  { id: 'tool-graphs', label: 'Graphs', window: 'tool-graphs' }
  ] },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
  { id: 'shell', label: 'New Shell', icon: 'shell', window: 'shell' },

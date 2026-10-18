@@ -1,0 +1,61 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Netwatch, as in RouterOS: checks each host from /etc/config/routerdeck
+// with one ping every interval and runs its up or down command when the
+// result changes. The current state goes to /var/run/routerdeck/netwatch.json
+// for the console. procd restarts this when the configuration changes.
+'use strict';
+
+import { popen, writefile, rename, mkdir } from 'fs';
+import { cursor } from 'uci';
+
+const STATUS = '/var/run/routerdeck/netwatch.json';
+const HOST = /^[A-Za-z0-9:][A-Za-z0-9.:-]{0,252}$/;
+
+let hosts = [];
+let ctx = cursor();
+ctx.load('routerdeck');
+ctx.foreach('routerdeck', 'netwatch', section => {
+	if (section.disabled == '1' || type(section.host) != 'string' || !match(section.host, HOST))
+		return;
+	push(hosts, {
+		name: section['.name'], host: section.host,
+		interval: max(1, int(section.interval ?? '10')), timeout: min(10, max(1, int(section.timeout ?? '1'))),
+		up: section.up, down: section.down, status: 'unknown', since: time(), next: 0
+	});
+});
+
+function save() {
+	let state = {};
+	for (let host in hosts)
+		state[host.name] = { host: host.host, status: host.status, since: host.since, rtt: host.rtt, checked: host.checked };
+	mkdir('/var/run/routerdeck', 0700);
+	writefile(STATUS + '.tmp', sprintf('%J', { now: time(), hosts: state }));
+	rename(STATUS + '.tmp', STATUS);
+}
+
+while (length(hosts)) {
+	for (let host in hosts) {
+		if (time() < host.next)
+			continue;
+		host.next = time() + host.interval;
+		let pipe = popen(sprintf('ping -c 1 -W %d %s 2>&1', host.timeout, host.host), 'r');
+		let reply = match(pipe?.read('all') ?? '', /time=([0-9.]+) ms/);
+		pipe?.close();
+		host.rtt = reply ? +reply[1] : null;
+		host.checked = time();
+		let status = reply ? 'up' : 'down';
+		if (status == host.status)
+			continue;
+		let first = host.status == 'unknown';
+		host.status = status;
+		host.since = time();
+		system([ '/usr/bin/logger', '-t', 'netwatch', '-p', 'daemon.notice', sprintf('%s is %s', host.host, status) ]);
+		// Like RouterOS, scripts run on changes, not on the first check.
+		let command = status == 'up' ? host.up : host.down;
+		if (!first && type(command) == 'string' && length(command))
+			system([ '/bin/sh', '-c', command + ' </dev/null >/dev/null 2>&1 &' ]);
+	}
+	save();
+	sleep(1000);
+}

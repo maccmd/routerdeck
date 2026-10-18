@@ -92,7 +92,8 @@ export default {
    { id: 'rxPackets', label: 'Rx Packets', type: 'static', tab: 'Status' },
    { id: 'txPackets', label: 'Tx Packets', type: 'static', tab: 'Status' },
    { id: 'errors', label: 'Rx / Tx Errors', type: 'static', tab: 'Status' },
-   { id: 'drops', label: 'Rx / Tx Drops', type: 'static', tab: 'Status' }
+   { id: 'drops', label: 'Rx / Tx Drops', type: 'static', tab: 'Status' },
+   { id: 'traffic', label: '', type: 'graph', tab: 'Traffic', graphLabel: `${row.name} traffic`, series: () => row.device?.history ?? [] }
   );
   return fields;
  },

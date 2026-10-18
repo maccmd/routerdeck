@@ -18,7 +18,7 @@ export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
 export const FILES = { crontab: '/etc/crontabs/root' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'crontab' ];
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -69,6 +69,10 @@ export function announce(names) {
 		// crond has no configuration trigger; it reads its tables at start.
 		if (name == 'crontab')
 			system('/etc/init.d/cron restart >/dev/null 2>&1');
+		// Netwatch runs only with hosts to watch, so it may not be registered
+		// with procd yet; it is enabled and restarted directly.
+		else if (name == 'routerdeck')
+			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1');
 		else
 			bus.call('service', 'event', { type: 'config.change', data: { package: name } });
 	}

@@ -9,7 +9,7 @@ const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'crontab'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab'];
 // Configurations kept as whole texts rather than UCI sections.
 const FILES = ['crontab'];
 const clone = value => structuredClone(value);
@@ -56,8 +56,9 @@ function initialConfigs() {
   myddns_ipv6: section('service', 'myddns_ipv6', 2, { update_url: 'http://[USERNAME]:[PASSWORD]@your.provider.net/nic/update?hostname=[DOMAIN]&myip=[IP]', lookup_host: 'yourhost.example.com', domain: 'yourhost.example.com', username: 'your_username', password: 'your_password', use_ipv6: '1', interface: 'wan6', ip_source: 'network', ip_network: 'wan6' })
  };
  const sqm = { eth0: section('queue', 'eth0', 0, { enabled: '1', interface: 'eth0', download: '85000', upload: '10000', qdisc: 'cake', script: 'piece_of_cake.qos', linklayer: 'none' }) };
+ const routerdeck = { cfg2692bd: section('netwatch', 'cfg2692bd', 0, { host: '203.0.113.1', interval: '10', timeout: '1', down: 'logger -t netwatch-demo gateway lost', comment: 'Upstream gateway' }, true), cfg2792bd: section('netwatch', 'cfg2792bd', 1, { host: '192.168.88.250', interval: '30', timeout: '1' }, true) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, crontab };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab };
 }
 
 const CLIENTS = [
@@ -418,7 +419,44 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  const ADDRESS = /^(\d+\.){3}\d+$|:/;
  const resolveHost = host => ADDRESS.test(host) ? host : host === 'openwrt.org' ? '198.51.100.80' : host.endsWith('.lan') ? '192.168.88.10' : null;
  const pathTo = address => address.startsWith('192.168.88.') || address.startsWith('fd00:88:') ? [address] : ['10.0.2.2', '100.64.0.1', null, '203.0.113.1', address];
+ // iperf3 one line per second; a scan answers 32 addresses per second.
+ function bandwidthResults(job) {
+  const { args } = job, elapsed = Math.floor(((job.stopped ?? now()) - job.started) / 1000);
+  if (args.mode === 'server') return [{ status: `Server listening on ${args.port}` }];
+  if (!resolveHost(args.host)) return [{ error: 'iperf', message: `error - unable to connect to server - server may not be running` }];
+  const results = [{ status: `Connecting to host ${args.host}, port ${args.port}` }];
+  const roles = args.direction === 'both' ? ['TX', 'RX'] : [null];
+  for (let second = 0; second < Math.min(elapsed, args.duration); second++) {
+   for (const role of roles) {
+    const bps = (role === 'RX' || args.direction === 'receive' ? 480e6 : 920e6) + (second % 3) * 4e6;
+    results.push({ role, start: second, end: second + 1, bytes: bps / 8, bps, summary: null, lost: args.protocol === 'udp' ? second % 2 : null });
+   }
+  }
+  if (elapsed >= args.duration) for (const role of roles) for (const summary of ['sender', 'receiver']) results.push({ role, start: 0, end: args.duration, bytes: 1e8, bps: (role === 'RX' || args.direction === 'receive' ? 482e6 : 924e6) - (summary === 'receiver' ? 2e6 : 0), summary, lost: null });
+  return results;
+ }
+ function scanResults(job) {
+  const [base, prefix] = job.args.network.split('/'), size = 2 ** (32 - Number(prefix));
+  const start = base.split('.').reduce((value, part) => value * 256 + Number(part), 0);
+  const first = start - (start % size), hosts = size - 2;
+  const scanned = Math.min(hosts, Math.floor(((job.stopped ?? now()) - job.started) / 1000 + 1) * 32);
+  const dotted = value => [24, 16, 8, 0].map(shift => Math.floor(value / 2 ** shift) % 256).join('.');
+  const results = [{ total: hosts }];
+  const answering = new Map([['192.168.88.1', '52:54:00:12:34:56'], ...CLIENTS.slice(0, 4).map(client => [client.ipaddr, client.macaddr])]);
+  // Append-only, batch by batch, like the job runner on the router.
+  for (let batch = 0; batch * 32 < scanned; batch++) {
+   for (let index = batch * 32 + 1; index <= Math.min(scanned, batch * 32 + 32); index++) {
+    const address = dotted(first + index);
+    if (answering.has(address)) results.push({ address, time: address.endsWith('.1') ? 0.08 : 0.4 + index % 5 * 0.1, ttl: 64 });
+   }
+   results.push({ scanned: Math.min(scanned, batch * 32 + 32) });
+  }
+  if (scanned >= hosts) results.push({ macs: Object.fromEntries([...answering].filter(([address]) => results.some(item => item.address === address))) });
+  return results;
+ }
  function jobResults(job) {
+  if (job.args.tool === 'bandwidth') return bandwidthResults(job);
+  if (job.args.tool === 'scan') return scanResults(job);
   const { args } = job, address = resolveHost(args.host);
   if (!address) return [{ error: 'resolve', message: `${args.tool}: bad address '${args.host}'` }];
   const end = job.stopped ?? now();
@@ -442,12 +480,13 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  }
  function diag(args) {
   if (args.action === 'start') {
-   if (!['ping', 'traceroute'].includes(args.tool)) return { ok: false, error: 'invalid', message: 'Unknown tool' };
-   if (typeof args.host !== 'string' || !HOST.test(args.host)) return { ok: false, error: 'invalid', message: 'Enter an address or host name' };
+   if (!['ping', 'traceroute', 'bandwidth', 'scan'].includes(args.tool)) return { ok: false, error: 'invalid', message: 'Unknown tool' };
+   if (args.tool === 'scan' ? !/^(\d{1,3}\.){3}\d{1,3}\/(2[2-9]|30)$/.test(args.network ?? '') : !(args.tool === 'bandwidth' && args.mode === 'server') && (typeof args.host !== 'string' || !HOST.test(args.host))) return { ok: false, error: 'invalid', message: args.tool === 'scan' ? 'Enter a network from /22 to /30, such as 192.168.1.0/24' : 'Enter an address or host name' };
    const within = (value, low, high, fallback) => Number.isInteger(value) && value >= low && value <= high ? value : fallback;
    const job = {
     tool: args.tool, host: args.host, family: args.family === 4 || args.family === 6 ? args.family : 0, size: within(args.size, 16, 65500, 56), count: within(args.count, 0, 100000, 0),
-    interval: within(args.interval, 200, 60000, 1000), timeout: within(args.timeout, 1, 10, 1), max: within(args.max, 1, 30, 15), protocol: args.protocol === 'udp' ? 'udp' : 'icmp'
+    interval: within(args.interval, 200, 60000, 1000), timeout: within(args.timeout, 1, 10, 1), max: within(args.max, 1, 30, 15), protocol: args.protocol === 'udp' ? 'udp' : args.tool === 'bandwidth' ? 'tcp' : 'icmp',
+    mode: args.mode === 'server' ? 'server' : 'client', direction: ['receive', 'both'].includes(args.direction) ? args.direction : 'send', duration: within(args.duration, 1, 300, 10), port: within(args.port, 1, 65535, 5201), network: args.network ?? null
    };
    const id = (++serial).toString(16).padStart(16, '0');
    jobs.set(id, { args: job, started: now(), stopped: null });
@@ -458,7 +497,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   if (args.action !== 'poll') return { ok: false, error: 'invalid', message: 'Unknown action' };
   if (!job) return { ok: false, error: 'gone', message: 'This job has ended' };
   const results = jobResults(job), from = Number.isInteger(args.from) ? args.from : 0;
-  const finished = results[0]?.error || (job.args.count && results.length - 1 >= job.args.count);
+  const finished = results.some(item => item.error) || (job.args.tool === 'bandwidth' ? job.args.mode === 'client' && results.some(item => item.summary === 'receiver') : job.args.tool === 'scan' ? results.some(item => item.macs) : job.args.count && results.length - 1 >= job.args.count);
   return { ok: true, running: !job.stopped && !finished, results: results.slice(from), next: results.length };
  }
 
@@ -555,6 +594,15 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    for (const queue of sectionsOf('sqm', 'queue').filter(item => item.enabled === '1')) devices[queue.interface] = { kind: queue.qdisc ?? 'cake', handle: '8001:', bytes: 90000000 + t * 120000, packets: 80000 + t * 100, dropped: 12 + Math.floor(t / 10) };
    return { devices };
   },
+  netwatch: () => {
+   const t = Math.floor(now() / 1000);
+   const hosts = Object.fromEntries(sectionsOf('routerdeck', 'netwatch').filter(item => item.disabled !== '1').map(item => {
+    const up = !item.host.endsWith('.250');
+    return [item['.name'], { host: item.host, status: up ? 'up' : 'down', since: Math.floor(started / 1000) - (up ? 3600 : 120), rtt: up ? 11.6 : null, checked: t }];
+   }));
+   return { running: Object.keys(hosts).length > 0, now: t, hosts };
+  },
+  wol: ({ mac }) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac ?? '') ? { ok: true } : { ok: false, error: 'invalid', message: 'Enter a MAC address such as 00:11:22:33:44:55' },
   packages: () => ({ manager: 'apk', packages: PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested })) }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
   services: () => clone(services), serviceAction,

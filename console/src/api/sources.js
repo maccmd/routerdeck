@@ -10,8 +10,11 @@ const uci = config => () => client.call('uci', 'get', { config }).then(reply => 
 const counterDelta = (now, before) => Number.isFinite(now) && Number.isFinite(before) && now >= before ? now - before : null;
 
 // Rates come from counter deltas over measured time. The first sample and
-// counter resets produce no rate rather than a wrong one.
+// counter resets produce no rate rather than a wrong one. The last five
+// minutes of rates per device feed the traffic graphs.
 let lastDevices = null;
+const HISTORY = 300;
+const traffic = new Map();
 async function devices() {
  const reply = await client.call('luci-rpc', 'getNetworkDevices');
  const time = performance.now();
@@ -21,7 +24,12 @@ async function devices() {
   if (!before || !stats || seconds <= 0) continue;
   const per = (key, factor = 1) => { const delta = counterDelta(stats[key], before[key]); return delta === null ? null : delta * factor / seconds; };
   device.rates = { tx_bps: per('tx_bytes', 8), rx_bps: per('rx_bytes', 8), tx_pps: per('tx_packets'), rx_pps: per('rx_packets') };
+  const history = traffic.get(name) ?? [];
+  history.push({ t: Date.now(), tx: device.rates.tx_bps, rx: device.rates.rx_bps });
+  if (history.length > HISTORY) history.splice(0, history.length - HISTORY);
+  traffic.set(name, history);
  }
+ for (const [name, device] of Object.entries(reply ?? {})) device.history = traffic.get(name) ?? [];
  lastDevices = { time, reply };
  return reply;
 }
@@ -55,6 +63,8 @@ export const SOURCES = {
  'uci:dropbear': [() => uci('dropbear')().catch(() => ({})), 10000],
  'uci:ttyd': [() => uci('ttyd')().catch(() => ({})), 10000],
  neighbors: [() => client.call('routerdeck', 'neighbors'), 3000],
+ 'uci:routerdeck': [() => uci('routerdeck')().catch(() => ({})), 5000],
+ netwatch: [() => client.call('routerdeck', 'netwatch').catch(() => ({ hosts: {} })), 2000],
  'uci:upnpd': [() => uci('upnpd')().catch(() => ({})), 5000],
  'uci:ddns': [() => uci('ddns')().catch(() => ({})), 5000],
  'uci:sqm': [() => uci('sqm')().catch(() => ({})), 5000],
@@ -91,6 +101,7 @@ export const SOURCES = {
 
 export function resetSources() {
  lastDevices = null;
+ traffic.clear();
  logState = { entries: [], after: 0 };
  poller.reset();
 }
