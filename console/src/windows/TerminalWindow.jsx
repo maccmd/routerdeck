@@ -28,5 +28,15 @@ export function TerminalWindow({ active }) {
  const url = terminalUrl(info);
  const mixed = location.protocol === 'https:' && url.startsWith('http:');
  if (mixed) return <div class="rd-terminal-note"><p>This page uses HTTPS but ttyd does not, so the browser blocks it.</p><p>Enable SSL for ttyd or open <a href={url} target="_blank" rel="noopener">{url}</a>.</p></div>;
- return <iframe class="rd-terminal-frame" title="Router terminal" src={url} allow="clipboard-read; clipboard-write" />;
+ return (
+  <div class="rd-terminal">
+   <iframe class="rd-terminal-frame" title="Router terminal" src={url} allow="clipboard-read; clipboard-write" />
+   <div class="rd-statusbar">
+    <span>ttyd on port {info.port}</span>
+    <span class="rd-status-note" title="ttyd binds to the LAN device and may need a restart after that network is reconfigured">
+     Blank after a network change? Run <code>/etc/init.d/ttyd restart</code>. <a href={url} target="_blank" rel="noopener">Open in a new tab</a>
+    </span>
+   </div>
+  </div>
+ );
 }

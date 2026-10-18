@@ -44,6 +44,11 @@ function run(command) {
 	return { code: proc.close(), output };
 }
 
+// The ttyd package installs /usr/bin/ttyd; accept /usr/sbin for custom builds.
+function ttyd_installed() {
+	return executable('/usr/bin/ttyd') || executable('/usr/sbin/ttyd');
+}
+
 function user_of(request) {
 	return request.info?.acl?.user ?? 'root';
 }
@@ -220,7 +225,7 @@ function terminal() {
 	for (let name, instance in services?.ttyd?.instances ?? {})
 		running ||= !!instance.running;
 	return {
-		installed: executable('/usr/sbin/ttyd'),
+		installed: ttyd_installed(),
 		running,
 		port: int(section?.port ?? '7681'),
 		ssl: section?.ssl == '1',
@@ -232,7 +237,7 @@ function terminal() {
 /* --- Safe Mode helpers -------------------------------------------------- */
 
 function watchdog(action) {
-	system([ '/etc/init.d/routerdeck-safemode', action ]);
+	return system([ '/etc/init.d/routerdeck-safemode', action ]) == 0;
 }
 
 function write_heartbeat() {
@@ -516,7 +521,12 @@ function safemode(request) {
 			write_json(SAFE + '/state.json', { sid, user: user_of(request), since: time(), timeout, count: 0, configs: CONFIGS });
 		}
 		write_heartbeat();
-		watchdog('start');
+		// Without its watchdog Safe Mode would protect nothing; never pretend.
+		if (!watchdog('start')) {
+			if (!mine)
+				safe_clear();
+			return failure('watchdog', 'The Safe Mode watchdog could not be started, so Safe Mode is off');
+		}
 		return status();
 	}
 	if (args.action == 'exit') {
@@ -542,7 +552,7 @@ return {
 					user: user_of(request),
 					capabilities: {
 						luci: access('/www/cgi-bin/luci') == true,
-						ttyd: executable('/usr/sbin/ttyd'),
+						ttyd: ttyd_installed(),
 						nft: executable('/usr/sbin/nft'),
 						ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
 						log_read: 'log' in objects,

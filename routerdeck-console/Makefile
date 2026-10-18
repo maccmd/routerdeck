@@ -32,6 +32,8 @@ define Package/routerdeck-console/install
 	$(INSTALL_DIR) $(1)/www
 	$(CP) ./htdocs/* $(1)/www/
 	$(CP) ./root/* $(1)/
+	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-safemode $(1)/etc/init.d/routerdeck-safemode
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/safemode-watchdog $(1)/usr/libexec/routerdeck/safemode-watchdog
 endef
 
 # rpcd loads ucode plugins only at startup.
@@ -41,9 +43,13 @@ define Package/routerdeck-console/postinst
 exit 0
 endef
 
+# The default prerm stops the Safe Mode watchdog; drop its runtime state too.
 define Package/routerdeck-console/postrm
 #!/bin/sh
-[ -n "$${IPKG_INSTROOT}" ] || /etc/init.d/rpcd reload
+[ -n "$${IPKG_INSTROOT}" ] || {
+	rm -rf /var/run/routerdeck
+	/etc/init.d/rpcd reload
+}
 exit 0
 endef
 

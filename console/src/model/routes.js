@@ -62,7 +62,8 @@ export default {
   }
   for (const entry of kernel.filter(entry => !entry.used)) {
    const { route } = entry;
-   const connect = route.protocol === 'kernel' && route.scope === 'link';
+   // Busybox `ip` omits the protocol; a link-scope route without a gateway is connected.
+   const connect = route.scope === 'link' && (route.protocol === 'kernel' || !route.protocol && !route.gateway);
    rows.push({
     key: `kernel:${entry.table}:${entry.dst}:${route.gateway ?? ''}:${route.dev ?? ''}:${route.type ?? ''}:${route.metric ?? 0}`,
     dynamic: true, readOnly: true, route,

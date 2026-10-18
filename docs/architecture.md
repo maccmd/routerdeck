@@ -149,13 +149,34 @@ so native beforeunload guards still apply to edited forms.
 Storage contains permitted paths and geometry only, never submitted field values,
 passwords or tokens. Minimized windows retain their in-memory forms.
 
+## RouterDeck Console
+
+`routerdeck-console` is independent of LuCI and of this theme. Its Preact client
+(`console/`, bundled by esbuild on the host) is served from `/www/routerdeck` and
+calls rpcd through uhttpd's `/ubus` with a `session login` session. Calls made in
+the same tick share one JSON-RPC batch; a shared poller loads each data source
+once per interval for all windows and pauses while the page is hidden.
+
+Window models (`console/src/model`) turn UCI and runtime snapshots into rows and
+form values back into operations. The `routerdeck` ucode plugin
+(`/usr/share/rpcd/ucode/routerdeck`, helpers in `/usr/share/ucode/routerdeck`)
+applies them: a private UCI delta directory, commit, a before/after `fw4 check`
+comparison, `config.change` events and a 100-entry history for Undo/Redo in
+`/var/run/routerdeck`. rpcd's own `uci apply` is not used: it commits every
+staged change of the session, has one global rollback slot whose timeout cannot
+be extended, and blocks all commits while armed. Safe Mode keeps its own
+snapshot; the `routerdeck-safemode` procd service restores it when the client's
+heartbeats stop, so a pending rollback survives an rpcd reload.
+
+See [RouterDeck Console](console.md) for behaviour, the object mapping and limits.
+
 ## Packaging and licensing
 
-All three packages use the official `rules.mk`, `package.mk` and `BuildPackage` macros.
+All four packages use the official `rules.mk`, `package.mk` and `BuildPackage` macros.
 The SDK emits native APK v3 or IPK packages with dependencies and lifecycle hooks.
 No archives are renamed to package extensions. Sources remain uncompiled ucode,
 avoiding bytecode coupling to the build host's ucode version.
 
 Bootstrap integration is Apache-2.0 and attributed in `NOTICE` and the template.
-All new code and the original SVG mark are Apache-2.0. Argon/Desktop were read as
+All new code and the original SVG mark are Apache-2.0. The console bundle includes Preact and Preact Signals (MIT), with their notices in `/www/routerdeck/licenses.txt`. Argon/Desktop were read as
 references only. No external fonts, CDN scripts, analytics or telemetry are used.

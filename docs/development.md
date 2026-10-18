@@ -16,8 +16,10 @@ npm run dev
 Preview binds **127.0.0.1:5173**. Its JSON fixtures and mock forms are not shipped
 to the router. `npm run dev` also builds RouterDeck Console and serves it at
 `/routerdeck/` with a simulated `/ubus` endpoint (`scripts/mock-ubus.mjs`; log in
-as `root` with password `routerdeck`). `npm run dev:console` rebuilds the console
-on every source change. Theme, dashboard and window renderers are shared with LuCI;
+as `root` with password `routerdeck`). Each login gets its own simulated router
+(`scripts/mock-router.mjs`), started from configuration captured on OpenWrt
+25.12.5 (`tests/fixtures`), so parallel tests never share state. `npm run
+dev:console` rebuilds the console on every source change. Theme, dashboard and window renderers are shared with LuCI;
 the real data adapter is separate. Never use preview as proof of router behavior.
 
 ## Source layout
@@ -34,7 +36,10 @@ the real data adapter is separate. Never use preview as proof of router behavior
 - `console`: RouterDeck Console client sources (Preact, bundled by esbuild).
   `src/api/rpc.js` is the ubus JSON-RPC client, `src/mdi` the window manager.
 - `routerdeck-console`: the console's OpenWrt package: rpcd ACL, the `routerdeck`
-  ucode plugin and the generated `htdocs/routerdeck` bundle (not committed).
+  ucode plugin and helpers, the Safe Mode watchdog and procd service, and the
+  generated `htdocs/routerdeck` bundle (not committed).
+- `console/src/model`: window models mapping UCI/runtime data to rows and forms
+  back to UCI operations; unit-tested against captured router data.
 - `preview`: simulated data and interactive visual development environment.
 - `tests`: unit, preview, real LuCI and package lifecycle checks.
 - `scripts`: pinned downloads, official SDK package builds, disposable VM tools.
@@ -88,7 +93,17 @@ python3 scripts/vm.py install --version 25.12.5
 
 The install helper selects RouterDeck in this disposable guest. RouterDeck Console
 is then available at `http://127.0.0.1:8088/routerdeck/` (login `root` with the
-guest password). For repeated
+guest password). While developing the console, `./scripts/console-push.sh` copies
+the current bundle and backend files into the running 25.12 guest without a
+package build; files are created by root and existing directories keep their
+owners. Reinstall the package afterwards to test packaging.
+
+Console checks against the guest (each undoes its own changes):
+
+```sh
+npm run test:vm -- tests/vm/backend.spec.mjs tests/vm/console.spec.mjs tests/vm/console-edit.spec.mjs --project=chromium-1440
+npx playwright test --config playwright.lifecycle.config.mjs tests/lifecycle/console.spec.mjs
+``` For repeated
 builds with the same package version, remove the guest's RouterDeck packages
 before installing again so the package manager does not retain old files.
 

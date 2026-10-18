@@ -26,9 +26,10 @@ downloadable packages. Build current source to try them; see the
 - **`luci-app-routerdeck-workspace`**, compatibility only: redirects old Workspace
   bookmarks. Windows are now built into the theme, without a separate menu page.
 - **`routerdeck-console`**, experimental and separate from LuCI: a windowed
-  console at `/routerdeck/` that talks to rpcd over `/ubus` directly. Stage 0
-  provides login, the main menu and movable windows; router data and editing
-  follow the [console plan](docs/console-plan.ru.md) (in Russian). Its bundle
+  console at `/routerdeck/`, modelled on desktop router tools, that talks to rpcd
+  over `/ubus`. Interfaces, addresses, routes, firewall, DHCP and the log are live
+  object lists; changes apply at once with Undo/Redo and Safe Mode rollback; a
+  terminal uses ttyd. See [RouterDeck Console](docs/console.md). Its bundle
   includes Preact (MIT).
 - Bootstrap remains installed. Installing RouterDeck registers it without
   changing the current design. Removing the selected theme restores Bootstrap.

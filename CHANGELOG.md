@@ -11,6 +11,17 @@
   open cascaded, move, resize, minimize and maximize inside the work area and
   restore with the session. Lists show their layout but no router data yet.
 - Add a simulated `/ubus` endpoint to the preview server and unit/browser tests.
+- Show live router data in object lists: interfaces and networks, addresses,
+  routes, firewall filter/NAT/connections/zones, DHCP servers and leases, log;
+  RouterOS-style flags, `;;; comment` lines, Find, sorting, column chooser,
+  context menus and drag-and-drop rule order.
+- Edit objects in windows with OK/Cancel/Apply/Disable/Comment/Copy/Remove;
+  changes apply at once through the `routerdeck` rpcd plugin, which validates
+  firewall changes with `fw4 check`, records a 100-entry Undo/Redo history and
+  refuses to race LuCI's apply with rollback.
+- Add Safe Mode with a procd watchdog that restores the snapshot when the
+  console stops sending heartbeats, a ttyd terminal window, the Windows menu,
+  a theme switch and RouterOS keyboard shortcuts.
 
 ### Navigation and windows
 

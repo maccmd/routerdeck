@@ -207,7 +207,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-terminal-note p { margin: 0 0 8px; }
 .rd-terminal-note code { color: #8fd18f; }
 .rd-terminal-note a { color: #8ab4ff; }
+.rd-terminal { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .rd-terminal-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #000; }
+.rd-terminal .rd-statusbar code { font-family: var(--rd-mono); }
 
 @media (max-width: 640px) {
  .rd-main { grid-template-columns: 0 128px 1fr; }

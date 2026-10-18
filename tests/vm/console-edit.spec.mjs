@@ -7,6 +7,13 @@ const ssh = command => execFileSync('sh', ['scripts/vm-ssh.sh', command], { enco
 // Changing LAN addresses restarts the interface; SSH may drop for a moment.
 const probe = command => { try { return ssh(command); } catch { return null; } };
 const password = (await readFile('.cache/vm/password', 'utf8')).trim();
+// 25.12 and 24.10 guests use different LAN subnets.
+const lanAddress = ssh('uci get network.lan.ipaddr');
+const lanNetmask = ssh('uci -q get network.lan.netmask || true');
+const net = lanAddress.split('.').slice(0, 3).join('.');
+// A legacy `ipaddr` + `netmask` pair becomes a CIDR list when an address is added.
+const prefixOf = mask => mask.split('.').reduce((bits, part) => bits + Number(part).toString(2).replace(/0/g, '').length, 0);
+const lanCidr = lanAddress.includes('/') ? lanAddress : `${lanAddress}/${prefixOf(lanNetmask)}`;
 
 test.describe.configure({ mode: 'serial' });
 test.skip(({ browserName, viewport }) => browserName !== 'chromium' || viewport.width !== 1440, 'Editing checks run once');
@@ -31,7 +38,7 @@ test.beforeEach(async ({ page }) => {
  await page.getByRole('button', { name: 'Connect' }).click();
  await expect(page.getByRole('navigation', { name: 'Main menu' })).toBeVisible();
 });
-test.afterEach(async ({ page }) => expect(page.consoleErrors).toEqual([]));
+test.afterEach(async ({ page }) => expect(page.consoleErrors ?? []).toEqual([]));
 
 async function openIp(page, label) {
  await page.getByRole('menuitem', { name: 'IP' }).click();
@@ -41,15 +48,15 @@ async function openIp(page, label) {
 test('a static route is added to the kernel at once and removed by Undo', async ({ page }) => {
  await openIp(page, 'Routes');
  const routes = win(page, 'Route List');
- await expect(row(routes, '192.168.77.0/24')).toContainText('br-lan');
+ await expect(row(routes, `${net}.0/24`)).toContainText('br-lan');
  await routes.getByRole('button', { name: 'Add', exact: true }).click();
  const item = win(page, 'New Route');
  await item.getByLabel('Dst. Address:').fill('10.123.0.0/16');
- await item.getByLabel('Gateway:').fill('192.168.77.254');
+ await item.getByLabel('Gateway:').fill(`${net}.254`);
  await item.getByLabel('Interface:').selectOption('lan');
  await item.getByLabel('Distance:').fill('7');
  await item.getByRole('button', { name: 'OK' }).click();
- await expect.poll(() => ssh('ip -4 route show 10.123.0.0/16'), { timeout: 15000 }).toContain('via 192.168.77.254 dev br-lan proto static metric 7');
+ await expect.poll(() => ssh('ip -4 route show 10.123.0.0/16'), { timeout: 15000 }).toContain(`via ${net}.254 dev br-lan`);
  await expect(row(routes, '10.123.0.0/16').locator('.is-flags')).toHaveText('AS', { timeout: 10000 });
  await page.getByRole('button', { name: 'Undo' }).click();
  await expect.poll(() => ssh('ip -4 route show 10.123.0.0/16'), { timeout: 15000 }).toBe('');
@@ -98,10 +105,12 @@ test('an address is added to the bridge and the history undoes it', async ({ pag
  await item.getByRole('button', { name: 'OK' }).click();
  await expect.poll(() => probe('ip -4 addr show br-lan'), { timeout: 30000 }).toContain('inet 192.168.79.1/24');
  await expect(row(list, '192.168.79.1/24').locator('.is-flags')).toHaveText('', { timeout: 10000 });
- await expect.poll(() => probe('uci get network.lan.ipaddr'), { timeout: 30000 }).toBe('192.168.77.1/24 192.168.79.1/24');
+ await expect.poll(() => probe('uci get network.lan.ipaddr'), { timeout: 30000 }).toBe(`${lanCidr} 192.168.79.1/24`);
  await page.getByRole('button', { name: 'Undo' }).click();
  await expect.poll(() => probe('ip -4 addr show br-lan') ?? '192.168.79.1', { timeout: 30000 }).not.toContain('192.168.79.1');
- await expect.poll(() => probe('uci get network.lan.ipaddr'), { timeout: 30000 }).toBe('192.168.77.1/24');
+ await expect.poll(() => probe('uci get network.lan.ipaddr'), { timeout: 30000 }).toBe(lanAddress);
+ // Undo restores the file exactly, including a legacy netmask option.
+ expect(ssh('uci -q get network.lan.netmask || true')).toBe(lanNetmask);
 });
 
 test('Safe Mode undoes a change on request', async ({ page }) => {
