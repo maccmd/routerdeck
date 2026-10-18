@@ -60,6 +60,27 @@ export function write_config(name, text) {
 	return write_text(FILES[name] ?? '/etc/config/' + name, text);
 };
 
+// Services of optional packages. procd reloads only services it has
+// registered: opkg enables them at installation without starting them, and
+// some are not procd services at all (ddns-scripts on 24.10). Such a service
+// would ignore changes until the next boot, so it is restarted.
+const SERVICES = { upnpd: 'miniupnpd', ddns: 'ddns', sqm: 'sqm', dropbear: 'dropbear', uhttpd: 'uhttpd', ttyd: 'ttyd' };
+
+function start_unregistered(bus, name) {
+	let service = SERVICES[name];
+	if (!service || readfile('/etc/init.d/' + service) == null)
+		return;
+	let listed = bus.call('service', 'list', { name: service });
+	if (listed?.[service] != null || system([ '/etc/init.d/' + service, 'enabled' ]) != 0)
+		return;
+	// A plain init script reloads its running processes, which also ends
+	// those of removed sections, and starts the new ones.
+	if (index(readfile('/etc/init.d/' + service), 'USE_PROCD=1') < 0)
+		system(sprintf('/etc/init.d/%s reload; /etc/init.d/%s start', service, service));
+	else
+		system([ '/etc/init.d/' + service, 'restart' ]);
+}
+
 // procd reloads the services registered for a changed configuration.
 export function announce(names) {
 	let bus = connect();
@@ -73,8 +94,10 @@ export function announce(names) {
 		// with procd yet; it is enabled and restarted directly.
 		else if (name == 'routerdeck')
 			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1');
-		else
+		else {
 			bus.call('service', 'event', { type: 'config.change', data: { package: name } });
+			start_unregistered(bus, name);
+		}
 	}
 	bus.disconnect();
 	return true;

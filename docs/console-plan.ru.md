@@ -1,7 +1,8 @@
 # RouterDeck Console: план WinBox-подобного интерфейса для OpenWrt
 
-Статус на 2026-10-18: **план выполнен** (этапы 0–4 и все окна из списка
-«дальше»), кроме проверки на настоящем NanoPi — у меня нет доступа к железу.
+Статус на 2026-10-18: **план выполнен** (этапы 0–4, все окна из списка
+«дальше» и второй круг: меню System, дополнительные вкладки, UPnP, DDNS, SQM и
+инструменты), кроме проверки на настоящем NanoPi — у меня нет доступа к железу.
 Описание для пользователей — в [console.md](console.md).
 
 - **Готово:** Quick Set; WiFi (интерфейсы, радио, регистрация); Interfaces
@@ -10,7 +11,13 @@
   DHCPv6 Bindings), DNS (Settings, Static); IPv6 → Addresses, Routes; Log;
   Tools → Ping, Traceroute, Torch; New Terminal — командная строка в стиле
   RouterOS (меню, print/add/set/remove/enable/disable/comment, find, export,
-  Tab, `?`, история); New Shell — ash через ttyd. Мгновенное применение,
+  Tab, `?`, история); New Shell — ash через ttyd.
+- **Второй круг:** System (Identity, Clock, NTP, Logging, Password, Packages,
+  Scheduler, Startup, Resources, Backup, Reboot); Interfaces → Ethernet, VLAN,
+  WireGuard и пиры; IP → ARP, Services, Address Lists, DHCP Networks и Options,
+  UPnP, Dynamic DNS; IPv6 → Neighbors; Routing → Rules; Queues → SQM; Tools →
+  Bandwidth Test, IP Scan, Netwatch (служба на роутере), Wake on LAN, Graphs и
+  вкладка Traffic. Мгновенное применение,
   Undo/Redo, Safe Mode со сторожем и перехватом другой сессией, горячие
   клавиши, контекстные меню, выбор колонок, меню Windows, светлая и тёмная тема.
 - **Проверено:**
@@ -49,6 +56,14 @@
     поэтому состояние WiFi читается через `luci-rpc getWirelessDevices`;
   - окно, открываясь, через два кадра забирало фокус у поля, в которое уже
     начали вводить, — ввод терялся; нашлось на WebKit в e2e.
+  - в 25.12 при наличии другого DHCP-сервера в сегменте (в QEMU — сам QEMU)
+    dnsmasq не раздаёт DHCP; опции DHCP в тестах проверяются с `force`;
+  - `fw4 reload` только добавляет элементы в наборы nftables: удалённый из
+    списка адрес оставался заблокированным — плагин очищает такие наборы;
+  - netifd читает пиров WireGuard только при подъёме интерфейса — плагин
+    перезапускает интерфейс, если пиры изменились;
+  - miniupnpd при старте дописывает в конфиг свой UUID, и Undo «включения UPnP»
+    отказывался — теперь Undo/Redo сливают изменения на уровне опций.
 - **Не сделано:** проверка на реальном NanoPi (нужны настоящий роутер и
   доступ к нему). Что проверить там — в конце раздела «Проверка».
 

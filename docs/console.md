@@ -53,7 +53,15 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
   min/avg/max; *Traceroute* probes every hop once per round, like mtr, and keeps
   loss, last, average, best, worst and deviation per hop; *Torch* shows Tx/Rx
   rates per connection on a chosen device, filtered by protocol, addresses and
-  port and grouped by the fields you collect.
+  port and grouped by the fields you collect. *Bandwidth Test* runs iperf3
+  against another iperf3 or waits as a one-off server; *IP Scan* pings a
+  network and lists who answers with MAC and host name; *Netwatch* pings hosts
+  from the router itself and runs commands when they go up or down; *Wake on
+  LAN* sends a magic packet; *Graphs* and the *Traffic* tab of an interface
+  draw live Tx/Rx.
+- **System.** Identity, Clock (time zone, set from this computer), NTP,
+  Logging, Password, Packages, Scheduler (cron), Startup (procd services),
+  Resources, Backup download and Reboot.
 - **Terminal.** *New Terminal* (Alt+T) is a command line in the RouterOS style
   (see [Command line](#command-line)). *New Shell* embeds the router's shell
   through [ttyd](https://github.com/tsl0922/ttyd), which asks for its own login.
@@ -85,6 +93,21 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | WiFi ▸ Registration | iwinfo association lists | — | Connected clients with signal, rates, uptime and DHCP host names |
 | PPP | `interface` sections with a PPP protocol | R connected, X disabled | PPPoE and other PPP clients: user, password, service, AC, peer DNS, default route, keepalive, MTU, zone |
 | Quick Set | `wan` and `lan` networks, their DHCP server and zone, LAN access points, `system` | — | One change for everything edited; see above |
+| Interfaces ▸ Ethernet | Ethernet devices, link state, `device` sections | R link up, S bridge port | Speed, duplex and autonegotiation in the port's `device` section, where the driver allows them |
+| Interfaces ▸ VLAN | `device` sections of type 8021q | R, I | The VLAN form of the device list |
+| Interfaces ▸ WireGuard, WireGuard Peers | `interface` sections with proto wireguard, `wireguard_<interface>` peers, `wg show` | R running, X disabled; C handshake within 3 min | A new interface gets a private key made on the router; peers changes restart the interface |
+| IP ▸ ARP, IPv6 ▸ Neighbors | the kernel's neighbour table (`ip neigh`) | D, C complete, I failed, S static lease, R router | *Make Static* reserves a DHCP lease |
+| IP ▸ Firewall ▸ Address Lists | fw4 `ipset` sections and their entries | X list disabled, E empty | Rules use a list on their Advanced tab; removed entries leave nftables at once |
+| IP ▸ DHCP Server ▸ Networks, Options | `dhcp_option` of each DHCP server | X, F forced | dnsmasq options: gateway (3), DNS (6), domain (15), NTP (42) and any other code |
+| IP ▸ Services | uhttpd, dropbear and ttyd | X disabled | Ports and where SSH and ttyd listen; a new web port moves this console |
+| IP ▸ UPnP | `upnpd` (miniupnpd) and its lease file | — | Settings, live mappings, ordered permission rules |
+| IP ▸ Dynamic DNS | `ddns` service sections (ddns-scripts) and its run directory | X, R updater running, 6 IPv6 | Provider list from ddns-scripts or a custom update URL |
+| Routing ▸ Rules | `rule` and `rule6` sections, `ip rule` | X, I invert, D kernel rule, A active | Policy routing to other tables |
+| Queues ▸ SQM | `queue` sections (sqm-scripts), `tc` | X, R shaping | cake or fq_codel per device with link-layer settings |
+| System ▸ … | `/etc/config/system`, `/etc/crontabs/root`, `rc list`, apk/opkg databases | — | Scheduler jobs: "# name" lines name them, commented-out jobs are disabled |
+| Tools ▸ Bandwidth Test, IP Scan | `bandwidth` and `scan` jobs of the same runner | — | Need iperf3 for the bandwidth test |
+| Tools ▸ Netwatch | `netwatch` sections in `/etc/config/routerdeck`, `routerdeck-netwatch` service | U up, D down, X disabled | Commands run on changes, not on the first check |
+| Tools ▸ Wake on LAN | etherwake | — | Shown when etherwake is installed |
 | Tools ▸ Ping, Traceroute | `ping` and `traceroute` jobs run by `/usr/libexec/routerdeck/diag` | — | Run outside rpcd; end when stopped, finished, unread for 15 seconds, or after an hour |
 | Tools ▸ Torch | `/proc/net/nf_conntrack` every second | — | Rates from byte counters of tracked connections, oriented to the chosen device by the routing table |
 | Log | logd (`log read`), `logread` fallback | — | Last 1000 lines, follows new entries |
@@ -126,12 +149,17 @@ names come from the form labels (*Src. Address* is `src-address`).
 [root@OpenWrt] > /export
 ```
 
-- Menus: `/interface` (`bridge`, `bridge port`, `bridge vlan`, `network`,
-  `pppoe-client`, `wifi`, `wifi radio`, `wifi registration-table`), `/ip`
-  (`address`, `route`, `firewall filter|nat|connection|zone`, `dhcp-server`,
-  `dhcp-server lease`, `dns`, `dns static`), `/ipv6` (`address`, `route`,
-  `dhcp-server binding`), `/log`, `/system` (`identity`, `resource`,
-  `history`) and `/tool` (`traceroute`, `torch`). `/ip address` and
+- Menus: `/interface` (`bridge`, `bridge port`, `bridge vlan`, `ethernet`,
+  `vlan`, `wireguard`, `wireguard peers`, `network`, `pppoe-client`, `wifi`,
+  `wifi radio`, `wifi registration-table`), `/ip` (`address`, `arp`, `route`,
+  `firewall filter|nat|address-list|connection|zone`, `dhcp-server`,
+  `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
+  `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
+  `dhcp-server binding`), `/routing rule`, `/queue sqm`, `/log`, `/system`
+  (`identity`, `clock`, `ntp client`, `logging`, `package`, `scheduler`,
+  `startup`, `resource`, `history`, and `reboot`, which asks first) and `/tool`
+  (`traceroute`, `torch`, `bandwidth-test`, `ip-scan`, `netwatch`, `wol`).
+  `/ip address` and
   `/ip/address` are the same; `..` goes up, `/` to the top; any unique
   abbreviation works (`/ip fi f pr`).
 - Commands: `print` (`detail`, `count-only`, `where name=value`, `!=`, `~regex`,
@@ -165,16 +193,21 @@ default). The package depends on rpcd, its ucode, luci-rpc and iwinfo modules,
 the ucode fs/ubus/uci modules, uhttpd with `/ubus`, and firewall4; standard
 OpenWrt images with LuCI already have all of them. For *New Shell*, install
 ttyd (`apk add ttyd` or `opkg install ttyd`); PPPoE needs `ppp-mod-pppoe`.
+UPnP, Dynamic DNS, Queues, Bandwidth Test and Wake on LAN appear once
+`miniupnpd-nftables`, `ddns-scripts`, `sqm-scripts`, `iperf3` and `etherwake`
+are installed; WireGuard needs `wireguard-tools` and `kmod-wireguard`.
 
 Removing the package (`apk del routerdeck-console` / `opkg remove
-routerdeck-console`) stops the Safe Mode watchdog, deletes the runtime state
-in `/var/run/routerdeck` and leaves `/etc/config` as it is.
+routerdeck-console`) stops the Safe Mode watchdog and Netwatch, ends running
+diagnostics, deletes the runtime state in `/var/run/routerdeck` and leaves
+`/etc/config` as it is.
 
 ## How changes are made
 
 Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 `redo`, `safemode`). The plugin changes only `network`, `firewall`, `dhcp`,
-`wireless` and `system`, and:
+`wireless`, `system`, `dropbear`, `uhttpd`, `ttyd`, `upnpd`, `ddns`, `sqm`,
+`routerdeck` and `/etc/crontabs/root`, and:
 
 1. refuses to run while LuCI is waiting to confirm an *apply with rollback*,
    so the two rollbacks cannot overwrite each other;
@@ -184,9 +217,17 @@ Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
    makes fw4 skip a section as invalid (fw4 itself would only warn);
 4. announces `config.change` so procd reloads the affected services;
 5. keeps the previous and new file contents for Undo and Redo in
-   `/var/run/routerdeck` (cleared at reboot).
+   `/var/run/routerdeck` (cleared at reboot). When another program changed
+   other options of the file meanwhile (miniupnpd writes its UUID, for
+   example), Undo and Redo carry the change over onto the file as it is;
+   when sections were added, removed or moved, or the same options changed,
+   they refuse;
+6. after firewall changes, flushes the nftables sets of address lists that lost
+   entries and deletes removed ones, because `fw4 reload` only adds to sets;
+   after changes to WireGuard peers, restarts that interface, because netifd
+   reads peers only when it brings the interface up.
 
-Safe Mode stores a snapshot of those five configurations. A procd service
+Safe Mode stores a snapshot of those configurations. A procd service
 (`routerdeck-safemode`), separate from rpcd, watches the console's heartbeats
 and restores the snapshot, reloads services and writes a syslog line when they
 stop. Changes made from LuCI or the shell while Safe Mode is active are undone
@@ -197,13 +238,20 @@ Ping and Traceroute run as jobs: rpcd handles one call at a time, so a probe
 waiting for its timeout inside the plugin would stall every window. The
 plugin's `diag` method starts `/usr/libexec/routerdeck/diag` in the
 background, reads its results and stops it; at most eight jobs run at once.
+Bandwidth tests (iperf3) and IP scans use the same runner. Netwatch is a procd
+service, `routerdeck-netwatch`, so it keeps watching while no console is open.
+
+Actions that are not configuration changes — starting a service, setting the
+clock, changing the password, Wake on LAN, downloading a backup — go straight
+to rpcd and are not in the Undo history.
 
 ## Access and security
 
 `/usr/share/rpcd/acl.d/routerdeck-console.json` grants the
 `routerdeck-console` group read access to the status objects and UCI configs the
 windows show (including iwinfo and the diagnostics jobs), and write access to
-the plugin's `apply`, `undo`, `redo` and `safemode`. The plugin runs as root
+the plugin's `apply`, `undo`, `redo`, `safemode` and `wol`, `rc init`,
+`system reboot` and LuCI's `setLocaltime` and `setPassword`. The plugin runs as root
 inside rpcd; diagnostics accept only plain host names and addresses. Users with `read '*'` / `write '*'` in
 `/etc/config/rpcd` (root by default) receive the group automatically. Serve
 the router over HTTPS where untrusted users share the network; ttyd then also
@@ -212,6 +260,12 @@ needs SSL, or the browser blocks the embedded terminal.
 ## Known limitations
 
 - Desktop browsers only; on narrow screens every window fills the work area.
+- Traffic graphs are drawn from rates this console samples while a window
+  needs them; the last five minutes live in the browser, not on the router.
+- DHCP Networks and Options are dnsmasq options; where odhcpd is the main
+  DHCPv4 server (`maindhcp`), the windows say so, because it ignores them.
+- Packages lists what is installed; installing and removing stay in LuCI or a
+  shell. The password change cannot be undone.
 - Torch measures connections tracked by the firewall, not packets on the wire:
   bridged traffic and anything without connection tracking is not shown, and
   the device a connection belongs to comes from the routing table.

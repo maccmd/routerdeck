@@ -83,3 +83,14 @@ export function reorderOps(config, values, orderedNames, types) {
 }
 
 export const quoted = value => value ? ` ${value}` : '';
+
+// The first IPv4 address of a network section as CIDR text, also for the
+// legacy ipaddr + netmask form OpenWrt 24.10 still writes.
+export function firstCidr(section) {
+ const first = list(section?.ipaddr)[0];
+ if (!first || first.includes('/')) return first ?? '';
+ const bits = String(section.netmask ?? '').split('.').map(Number);
+ if (bits.length !== 4 || bits.some(part => !(part >= 0 && part <= 255))) return first;
+ const prefix = bits.reduce((count, part) => count + part.toString(2).replace(/0/g, '').length, 0);
+ return `${first}/${prefix}`;
+}

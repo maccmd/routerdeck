@@ -103,7 +103,7 @@ const wgInterfaces = data => sections(data['uci:network'], 'interface').filter(s
 export const wireguard = {
  id: 'wireguard',
  noun: 'WireGuard Interface',
- sources: ['uci:network', 'uci:firewall', 'ifaces', 'wireguard'],
+ sources: ['uci:network', 'uci:firewall', 'ifaces', 'wireguard', 'protos'],
  columns: [
   { id: 'flags', label: '', width: 30 },
   { id: 'name', label: 'Name', width: 100 },
@@ -115,7 +115,8 @@ export const wireguard = {
  ],
  flagLegend: { R: 'running', X: 'disabled' },
  defaultSort: 'name',
- status: data => data.wireguard?.available === false ? 'WireGuard needs the wireguard-tools and kmod-wireguard packages' : '',
+ status: data => data.wireguard?.available === false ? 'WireGuard needs the wireguard-tools and kmod-wireguard packages'
+  : data.protos && !Object.hasOwn(data.protos, 'wireguard') ? 'netifd has not loaded WireGuard yet: restart the network or the router after installing wireguard-tools' : '',
  rows(data) {
   return wgInterfaces(data).map(section => {
    const name = section['.name'], live = data.wireguard?.interfaces?.[name];

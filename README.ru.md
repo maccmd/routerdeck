@@ -30,9 +30,12 @@
   закладками. Отдельного пункта Workspace больше нет, окна входят в тему.
 - Экспериментальный **`routerdeck-console`**, отдельный от LuCI: оконная
   консоль по адресу `/routerdeck/` по образцу настольных утилит для роутеров,
-  которая работает с rpcd напрямую через `/ubus`. Quick Set, WiFi, интерфейсы,
-  мосты и VLAN, PPP, адреса и маршруты IPv4 и IPv6, firewall, DHCP и DHCPv6, DNS
-  и журнал — живые списки объектов; Ping, Traceroute и Torch — инструменты.
+  которая работает с rpcd напрямую через `/ubus`. Quick Set, WiFi, интерфейсы
+  (Ethernet, VLAN, WireGuard), мосты, PPP, адреса, маршруты и правила
+  маршрутизации IPv4 и IPv6, firewall со списками адресов, DHCP и DHCPv6, DNS,
+  UPnP, динамический DNS, очереди SQM, службы, меню System и журнал — живые
+  списки объектов; Ping, Traceroute, Torch, Bandwidth Test, IP Scan, Netwatch,
+  Wake on LAN и графики трафика — инструменты.
   Изменения применяются сразу, есть Undo/Redo и Safe Mode с автоматическим
   откатом. New Terminal — командная строка в стиле RouterOS над теми же
   объектами, New Shell — оболочка через ttyd.

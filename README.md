@@ -27,10 +27,12 @@ downloadable packages. Build current source to try them; see the
   bookmarks. Windows are now built into the theme, without a separate menu page.
 - **`routerdeck-console`**, experimental and separate from LuCI: a windowed
   console at `/routerdeck/`, modelled on desktop router tools, that talks to rpcd
-  over `/ubus`. Quick Set, WiFi, interfaces, bridges and VLANs, PPP, IPv4 and IPv6
-  addresses and routes, firewall, DHCP and DHCPv6, DNS and the log are live object
-  lists; Ping, Traceroute and Torch are tools; changes apply at once with Undo/Redo
-  and Safe Mode rollback. New Terminal is a RouterOS-style command line over the
+  over `/ubus`. Quick Set, WiFi, interfaces (Ethernet, VLAN, WireGuard), bridges,
+  PPP, IPv4 and IPv6 addresses, routes and policy rules, firewall with address
+  lists, DHCP and DHCPv6, DNS, UPnP, dynamic DNS, SQM queues, services, the System
+  menu and the log are live object lists; Ping, Traceroute, Torch, Bandwidth Test,
+  IP Scan, Netwatch, Wake on LAN and traffic graphs are tools; changes apply at
+  once with Undo/Redo and Safe Mode rollback. New Terminal is a RouterOS-style command line over the
   same objects; New Shell uses ttyd. See [RouterDeck Console](docs/console.md). Its bundle
   includes Preact (MIT).
 - Bootstrap remains installed. Installing RouterDeck registers it without

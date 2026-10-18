@@ -2,7 +2,7 @@
 // IP > DHCP Server: per-network `dhcp` sections and leases. Static leases are
 // `host` sections; an active lease without one is dynamic and can be made
 // static. A lease shows an address was handed out, not that a client is online.
-import { sections, truthy, list, invalid, networkOptions, compact } from './common.js';
+import { sections, truthy, list, invalid, networkOptions, compact, firstCidr } from './common.js';
 import { parseCidr, isIPv4, isMac, addressKey, formatIPv4, parseIPv4, parseIPv6 } from '../lib/ip.js';
 import { uptime } from '../lib/format.js';
 
@@ -11,7 +11,7 @@ const HOSTNAME = /^[A-Za-z0-9]([A-Za-z0-9-]{0,62})$/;
 
 function pool(data, section) {
  const network = sections(data['uci:network'], 'interface').find(item => item['.name'] === section.interface);
- const cidr = parseCidr(list(network?.ipaddr)[0] ?? '');
+ const cidr = parseCidr(firstCidr(network));
  if (!cidr) return '';
  const base = parseIPv4(cidr.network), start = Number(section.start ?? 100), limit = Number(section.limit ?? 150);
  return `${formatIPv4(base + start)}-${formatIPv4(base + start + limit - 1)}`;
@@ -270,7 +270,7 @@ const odhcpdServes = data => truthy(sections(data['uci:dhcp'], 'odhcpd')[0]?.mai
 
 function routerAddress(data, section) {
  const network = sections(data['uci:network'], 'interface').find(item => item['.name'] === section.interface);
- return parseCidr(list(network?.ipaddr)[0] ?? '');
+ return parseCidr(firstCidr(network));
 }
 
 export const dhcpNetworks = {

@@ -39,6 +39,19 @@
   moved to New Shell.
 - Fix focus being taken from a field the user already typed in when a window
   opens, and quick successive form edits overwriting each other.
+- Add the System menu: Identity, Clock, NTP, Logging, Password, Packages,
+  Scheduler (crontab, with Undo and Safe Mode), Startup (procd services),
+  Resources, Backup download and Reboot.
+- Add tabs and lists: Interfaces ▸ Ethernet, VLAN, WireGuard and peers; IP ▸
+  ARP, Services, Firewall ▸ Address Lists, DHCP Networks and Options; IPv6 ▸
+  Neighbors; Routing ▸ Rules.
+- Add IP ▸ UPnP, IP ▸ Dynamic DNS and Queues ▸ SQM for routers with those
+  packages.
+- Add Tools ▸ Bandwidth Test (iperf3), IP Scan, Netwatch (a service on the
+  router), Wake on LAN and Graphs, and a Traffic tab for interfaces.
+- Undo/Redo carry a change over onto a file another program changed in other
+  options; removed address-list entries leave nftables at once; changed
+  WireGuard peers restart their interface.
 
 ### Navigation and windows
 

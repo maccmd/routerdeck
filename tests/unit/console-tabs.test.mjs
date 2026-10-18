@@ -49,6 +49,11 @@ test('DHCP networks and options edit the same dhcp_option list', () => {
  const change = networks.save({ ...values, gateway: '192.168.77.254', dns: [] }, row, input, { dirty: new Set(['gateway', 'dns']) });
  assert.deepEqual(change.ops[0].values.dhcp_option, ['42,192.168.77.1', 'tag:guest,3', '3,192.168.77.254']);
  rejects(() => networks.save({ ...values, gateway: 'router' }, row, input, { dirty: new Set(['gateway']) }), 'gateway');
+ // OpenWrt 24.10 writes the LAN address as ipaddr + netmask.
+ input['uci:network'].lan.ipaddr = '192.168.78.1';
+ input['uci:network'].lan.netmask = '255.255.255.0';
+ assert.equal(networks.rows(input).find(item => item.key === 'lan').cells.address, '192.168.78.0/24');
+ assert.equal(MODELS['dhcp-servers'].rows(input).find(item => item.key === 'lan').cells.pool, '192.168.78.100-192.168.78.249');
 
  const options = MODELS['dhcp-options'], rows = options.rows(input);
  assert.deepEqual(rows.map(item => [item.cells.server, item.cells.code, item.cells.name, item.cells.value]), [['lan', '42', 'ntp-server', '192.168.77.1'], ['lan', '6', 'dns-server', '9.9.9.9'], ['lan', 'tag:guest', '', '3']]);

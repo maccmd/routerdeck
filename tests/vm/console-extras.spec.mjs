@@ -61,10 +61,10 @@ test('a dynamic DNS service starts its updater; removing it stops it', async ({ 
  await service.getByRole('button', { name: 'OK' }).click();
  await expect(row(ddns, 'rdddns')).toContainText('custom URL');
  // The bracket keeps pgrep from matching the shell that runs it.
- await expect.poll(() => probe('pgrep -f "dynamic_dns_update[r][.]sh -S rdddns" || echo none'), { timeout: 30000 }).toMatch(/^\d+/);
+ await expect.poll(() => probe('pgrep -f "dynamic_dns_update[r][.]sh.* -S rdddns" || echo none'), { timeout: 30000 }).toMatch(/^\d+/);
  await expect(row(ddns, 'rdddns').locator('.is-flags')).toHaveText(/R/, { timeout: 10000 });
  await undo(page);
- await expect.poll(() => probe('pgrep -f "dynamic_dns_update[r][.]sh -S rdddns" || echo none'), { timeout: 30000 }).toBe('none');
+ await expect.poll(() => probe('pgrep -f "dynamic_dns_update[r][.]sh.* -S rdddns" || echo none'), { timeout: 30000 }).toBe('none');
 });
 
 test('an SQM queue puts cake on the WAN device; disabling removes it', async ({ page }) => {

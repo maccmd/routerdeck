@@ -16,7 +16,8 @@ const win = (page, title) => page.getByRole('dialog', { name: title, exact: true
 const row = (scope, text) => scope.locator('.rd-grid-row').filter({ hasText: text });
 const lan = ssh('uci get network.lan.ipaddr').split('/')[0];
 const prefix = lan.split('.').slice(0, 3).join('.');
-const configs = 'sha256sum /etc/config/network /etc/config/firewall /etc/config/dhcp /etc/config/ttyd';
+// ttyd is optional, so its file may be missing.
+const configs = 'sha256sum /etc/config/network /etc/config/firewall /etc/config/dhcp /etc/config/ttyd 2>/dev/null; true';
 let before;
 // QEMU answers DHCP on the LAN itself, so dnsmasq refuses to serve it
 // unless forced; the DHCP option check needs dnsmasq's configuration.
@@ -72,6 +73,8 @@ test('an address list becomes an nftables set', async ({ page }) => {
 });
 
 test('a WireGuard interface gets a key made on the router, and a peer', async ({ page }) => {
+ test.skip(!probe('[ -x /usr/bin/wg ] && echo yes'), 'wireguard-tools is not installed');
+ test.skip(!probe('ubus call network get_proto_handlers | grep -c wireguard || true').match(/^[1-9]/), 'netifd has not loaded WireGuard (restart the network after installing it)');
  const peerKey = ssh('wg genkey | wg pubkey');
  await open(page, 'Interfaces');
  const list = win(page, 'Interface List');

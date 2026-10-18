@@ -175,6 +175,13 @@ two connection-tracking samples. The command line (`console/src/cli`) parses
 RouterOS-style commands and runs them through the same window models, so a
 command and the matching window produce identical operations.
 
+Actions that are not configuration changes (rpcd calls such as `rc init`,
+a password change, a backup download) are described by models as data and
+run by `perform()`, so models stay testable without a router. Netwatch is a
+procd service (`routerdeck-netwatch`) reading `/etc/config/routerdeck`.
+Undo and Redo merge at the level of UCI options when another program changed
+other options of a file since.
+
 See [RouterDeck Console](console.md) for behaviour, the object mapping and limits.
 
 ## Packaging and licensing
