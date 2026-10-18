@@ -41,6 +41,7 @@ define Package/routerdeck-console/install
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/queues $(1)/usr/libexec/routerdeck/queues
 	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-graphing $(1)/etc/init.d/routerdeck-graphing
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/graphing $(1)/usr/libexec/routerdeck/graphing
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/bird $(1)/usr/libexec/routerdeck/bird
 	$(INSTALL_BIN) ./root/etc/hotplug.d/iface/90-routerdeck-queues $(1)/etc/hotplug.d/iface/90-routerdeck-queues
 endef
 

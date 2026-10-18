@@ -29,7 +29,9 @@ export const MENU = [
  ] },
  { id: 'routing', label: 'Routing', icon: 'routing', children: [
   { id: 'routing-rules', label: 'Rules', window: 'routing-rules' },
-  { id: 'routing-tables', label: 'Tables', window: 'routing-tables' }
+  { id: 'routing-tables', label: 'Tables', window: 'routing-tables' },
+  { id: 'routing-ospf', label: 'OSPF', window: 'routing-ospf', requires: 'bird' },
+  { id: 'routing-bgp', label: 'BGP', window: 'routing-bgp', requires: 'bird' }
  ] },
  { id: 'queues', label: 'Queues', icon: 'queues', window: 'queues' },
  { id: 'system', label: 'System', icon: 'system', children: [

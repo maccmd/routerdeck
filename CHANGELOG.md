@@ -75,6 +75,10 @@
   as HTB classes, with live rates; the Queues window no longer needs SQM.
 - Add Tools ▸ Graphing: an optional `routerdeck-graphing` service keeps day,
   week, month and year history of interfaces, CPU and memory on the router.
+- Add Routing ▸ OSPF (instances, areas, interface templates, neighbors, LSAs,
+  routes) and Routing ▸ BGP (connections, sessions, routes) over bird2: the
+  console writes `/etc/bird.conf` while it is bird's own or its own file, and
+  IP ▸ Routes marks the routes bird installed.
 
 ### Removed
 

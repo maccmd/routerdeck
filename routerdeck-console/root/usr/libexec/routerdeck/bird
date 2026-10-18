@@ -1,0 +1,271 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Routing ▸ OSPF and BGP: writes /etc/bird.conf from the ospf, ospf_area,
+// ospf_interface and bgp sections of /etc/config/routerdeck and has bird load
+// it. Only a missing file, bird's packaged one or one written here (it starts
+// with BIRD_MARKER) is replaced; a file edited by hand stays as it is. The
+// packaged file is kept in /etc/routerdeck and put back once no OSPF or BGP
+// section is left. Runs after every change to /etc/config/routerdeck; what
+// happened is left in BIRD_STATE for the console. Protocols are named
+// rd_<section> so that no name collides with a keyword of bird's language;
+// the ones every configuration has are rdx_*.
+'use strict';
+
+import { readfile, writefile, unlink, access, popen, mkdir } from 'fs';
+import { cursor } from 'uci';
+import { BIRD_CONF, BIRD_MARKER, BIRD_STATE, RUN, bird_package_sums, write_text, write_json, ensure_dirs } from 'routerdeck.core';
+
+const SAVED = '/etc/routerdeck/bird.conf.default';
+const CHECK = RUN + '/bird.check.conf';
+const IPV4 = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$/;
+const IPV6 = /^[0-9a-fA-F]*:[0-9a-fA-F:.]*$/;
+const DEVICE = /^[A-Za-z0-9_.@*?-]{1,15}$/;
+const OSPF_SOURCES = 'RTS_OSPF, RTS_OSPF_IA, RTS_OSPF_EXT1, RTS_OSPF_EXT2';
+
+function sh(command) {
+	let pipe = popen(command + ' 2>&1', 'r');
+	let output = pipe?.read('all') ?? '';
+	pipe?.close();
+	return output;
+}
+
+function finish(state) {
+	state.time = time();
+	write_json(BIRD_STATE, state);
+	exit(0);
+}
+
+const items = value => type(value) == 'array' ? value : value == null || value == '' ? [] : split(trim('' + value), /\s+/);
+const number = (text, low, high) => match('' + (text ?? ''), /^[0-9]+$/) != null && +text >= low && +text <= high;
+const address = (text, v6) => type(text) == 'string' && match(text, v6 ? IPV6 : IPV4) != null;
+// A password goes between double quotes in the configuration.
+const key_ok = text => type(text) == 'string' && length(text) > 0 && length(text) <= 64 && index(text, '"') < 0 && index(text, '\\') < 0 && match(text, /^[[:print:]]+$/) != null;
+
+function prefix_ok(text, v6) {
+	let parts = split(text ?? '', '/');
+	return length(parts) == 2 && address(parts[0], v6) && match(parts[1], /^[0-9]{1,3}$/) != null && +parts[1] <= (v6 ? 128 : 32);
+}
+
+function append(target, list) {
+	for (let item in list)
+		push(target, item);
+	return target;
+}
+
+if (!access('/usr/sbin/bird', 'x'))
+	finish({ installed: false });
+ensure_dirs();
+
+let ctx = cursor(), instances = [], areas = [], templates = [], peers = [];
+ctx.load('routerdeck');
+ctx.foreach('routerdeck', 'ospf', section => { push(instances, section); });
+ctx.foreach('routerdeck', 'ospf_area', section => { push(areas, section); });
+ctx.foreach('routerdeck', 'ospf_interface', section => { push(templates, section); });
+ctx.foreach('routerdeck', 'bgp', section => { push(peers, section); });
+
+let current = readfile(BIRD_CONF);
+let ours = current != null && substr(current, 0, length(BIRD_MARKER)) == BIRD_MARKER;
+let packaged = false;
+if (current != null && !ours) {
+	let sums = bird_package_sums();
+	let sha = match(sh("sha256sum '" + BIRD_CONF + "'"), /^([0-9a-f]{64})/);
+	let md5 = match(sh("md5sum '" + BIRD_CONF + "'"), /^([0-9a-f]{32})/);
+	packaged = (sha != null && sha[1] in sums) || (md5 != null && md5[1] in sums);
+}
+let file = current == null ? 'missing' : ours ? 'routerdeck' : packaged ? 'packaged' : 'edited';
+let client = access('/usr/sbin/birdc', 'x') ? '/usr/sbin/birdc' : access('/usr/sbin/birdcl', 'x') ? '/usr/sbin/birdcl' : null;
+
+// bird reads the new file; a stopped bird is started. Switching between
+// bird's file and this one restarts it: renamed device protocols leave it
+// without interfaces until the next scan.
+function reconfigure(restart) {
+	system('/etc/init.d/bird enabled || /etc/init.d/bird enable');
+	let reply = client && !restart ? sh(client + ' configure') : '';
+	if (!client || restart || match(reply, /Unable to connect/)) {
+		system('/etc/init.d/bird restart >/dev/null 2>&1');
+		return 'restarted';
+	}
+	return trim(reply);
+}
+
+// Routes a protocol announces: a default route as asked, the networks of a
+// BGP connection and what it redistributes.
+function out_filter(name, options, v6) {
+	let lines = [ sprintf('filter rdx_out_%s {', name), '\tif net.len = 0 then {' ];
+	let originate = options.originate_default ?? 'never';
+	if (originate == 'always')
+		push(lines, '\t\taccept;');
+	else if (originate == 'if-installed')
+		push(lines, '\t\tif proto = "rdx_default4" || proto = "rdx_default6" then reject;', '\t\taccept;');
+	else
+		push(lines, '\t\treject;');
+	push(lines, '\t}');
+	let networks = filter(items(options.network), item => prefix_ok(item, v6));
+	if (length(networks))
+		push(lines, sprintf('\tif net ~ [ %s ] then accept;', join(', ', networks)));
+	let redistribute = items(options.redistribute);
+	if ('connected' in redistribute)
+		push(lines, '\tif source = RTS_DEVICE then accept;');
+	if ('static' in redistribute)
+		push(lines, '\tif source = RTS_INHERIT then accept;');
+	if ('ospf' in redistribute)
+		push(lines, sprintf('\tif source ~ [ %s ] then accept;', OSPF_SOURCES));
+	if ('bgp' in redistribute)
+		push(lines, '\tif source = RTS_BGP then accept;');
+	push(lines, '\treject;', '}');
+	return join('\n', lines);
+}
+
+function ospf_text(instance) {
+	let name = instance['.name'], v3 = instance.version == '3';
+	let mine = filter(areas, area => area.instance == name && area.disabled != '1');
+	// bird refuses OSPF without areas.
+	if (!length(mine))
+		return null;
+	let lines = [ out_filter(name, instance, v3), '', sprintf('protocol ospf %s rd_%s {', v3 ? 'v3' : 'v2', name) ];
+	if (instance.disabled == '1')
+		push(lines, '\tdisabled;');
+	if (address(instance.router_id, false))
+		push(lines, sprintf('\trouter id %s;', instance.router_id));
+	push(lines, sprintf('\t%s { import all; export filter rdx_out_%s; };', v3 ? 'ipv6' : 'ipv4', name));
+	for (let area in mine) {
+		let id = address(area.area_id, false) ? area.area_id : '0.0.0.0';
+		push(lines, sprintf('\tarea %s {', id));
+		if (id != '0.0.0.0' && area.type in [ 'stub', 'nssa' ])
+			push(lines, sprintf('\t\t%s;', area.type));
+		for (let template in filter(templates, item => item.area == area['.name'] && item.disabled != '1')) {
+			let patterns = append(map(filter(items(template.interface), device => match(device, DEVICE)), device => '"' + device + '"'), filter(items(template.network), item => prefix_ok(item, v3)));
+			if (!length(patterns))
+				continue;
+			let options = [];
+			if (number(template.cost, 1, 65535))
+				push(options, sprintf('cost %d;', template.cost));
+			if (number(template.priority, 0, 255))
+				push(options, sprintf('priority %d;', template.priority));
+			if (template.type in [ 'broadcast', 'ptp', 'ptmp' ])
+				push(options, sprintf('type %s;', template.type));
+			if (number(template.hello, 1, 65535))
+				push(options, sprintf('hello %d;', template.hello));
+			if (number(template.dead, 1, 65535))
+				push(options, sprintf('dead %d;', template.dead));
+			if (template.passive == '1')
+				push(options, 'stub;');
+			let key = template.auth_key;
+			if (key_ok(key) && template.auth == 'simple' && !v3)
+				push(options, 'authentication simple;', sprintf('password "%s";', key));
+			else if (key_ok(key) && template.auth == 'md5' && !v3)
+				push(options, 'authentication cryptographic;', sprintf('password "%s" { algorithm keyed md5; };', key));
+			else if (key_ok(key) && template.auth == 'sha256')
+				push(options, 'authentication cryptographic;', sprintf('password "%s" { algorithm hmac sha256; };', key));
+			push(lines, sprintf('\t\tinterface %s {', join(', ', patterns)));
+			append(lines, map(options, option => '\t\t\t' + option));
+			push(lines, '\t\t};');
+		}
+		push(lines, '\t};');
+	}
+	push(lines, '}');
+	return join('\n', lines);
+}
+
+function bgp_text(peer) {
+	let name = peer['.name'], v6 = index(peer.remote_address ?? '', ':') >= 0;
+	if (!address(peer.remote_address, v6) || !number(peer.as, 1, 4294967295) || !number(peer.remote_as, 1, 4294967295))
+		return null;
+	let lines = [ out_filter(name, peer, v6), '', sprintf('protocol bgp rd_%s {', name) ];
+	if (peer.disabled == '1')
+		push(lines, '\tdisabled;');
+	push(lines, sprintf('\tlocal %sas %s;', address(peer.local_address, v6) ? peer.local_address + ' ' : '', peer.as));
+	push(lines, sprintf('\tneighbor %s as %s;', peer.remote_address, peer.remote_as));
+	if (address(peer.router_id, false))
+		push(lines, sprintf('\trouter id %s;', peer.router_id));
+	if (number(peer.multihop, 1, 255))
+		push(lines, sprintf('\tmultihop %d;', peer.multihop));
+	if (number(peer.hold_time, 3, 65535))
+		push(lines, sprintf('\thold time %d;', peer.hold_time));
+	if (key_ok(peer.password))
+		push(lines, sprintf('\tpassword "%s";', peer.password));
+	push(lines, sprintf('\t%s { import all; export filter rdx_out_%s; };', v6 ? 'ipv6' : 'ipv4', name));
+	push(lines, '}');
+	return join('\n', lines);
+}
+
+function config_text() {
+	let parts = [
+		BIRD_MARKER + ' from /etc/config/routerdeck (Routing ▸ OSPF and BGP).\n' +
+		'# Changes made here are overwritten; remove the first line to keep this file as it is.\n\n' +
+		'log syslog all;\n\n' +
+		'protocol device rdx_device {\n\tscan time 10;\n}\n\n' +
+		'protocol direct rdx_direct {\n\tipv4;\n\tipv6;\n}\n\n' +
+		// Kernel routes of other origin (netifd's static routes) are learned
+		// for redistribution; only OSPF and BGP routes go to the kernel.
+		sprintf('protocol kernel rdx_kernel4 {\n\tlearn;\n\tipv4 { import all; export where source ~ [ %s, RTS_BGP ]; };\n}\n\n', OSPF_SOURCES) +
+		sprintf('protocol kernel rdx_kernel6 {\n\tlearn;\n\tipv6 { import all; export where source ~ [ %s, RTS_BGP ]; };\n}', OSPF_SOURCES)
+	];
+	let enabled = filter(append(append([], instances), peers), section => section.disabled != '1');
+	// "Always" announces a default route even without one; it loses to any
+	// real default route.
+	if (length(filter(enabled, section => section.originate_default == 'always')))
+		push(parts,
+			'protocol static rdx_default4 {\n\tipv4 { preference 1; };\n\troute 0.0.0.0/0 blackhole;\n}',
+			'protocol static rdx_default6 {\n\tipv6 { preference 1; };\n\troute ::/0 blackhole;\n}');
+	// The networks of BGP connections are announced whether or not a route
+	// to them exists.
+	for (let v6 in [ false, true ]) {
+		let networks = [];
+		for (let peer in filter(enabled, section => section['.type'] == 'bgp'))
+			for (let item in items(peer.network))
+				if (prefix_ok(item, v6) && !(item in networks))
+					push(networks, item);
+		if (length(networks))
+			push(parts, sprintf('protocol static rdx_networks%d {\n\t%s { preference 1; };\n%s\n}', v6 ? 6 : 4, v6 ? 'ipv6' : 'ipv4', join('\n', map(networks, item => sprintf('\troute %s blackhole;', item)))));
+	}
+	for (let instance in instances) {
+		let text = ospf_text(instance);
+		if (text)
+			push(parts, text);
+	}
+	for (let peer in peers) {
+		let text = bgp_text(peer);
+		if (text)
+			push(parts, text);
+	}
+	return join('\n\n', parts) + '\n';
+}
+
+let state = { installed: true, file };
+if (!length(instances) && !length(peers)) {
+	// Nothing left to route: bird gets its own file back.
+	if (ours) {
+		let saved = readfile(SAVED);
+		write_text(BIRD_CONF, saved ?? config_text());
+		if (saved != null)
+			unlink(SAVED);
+		state.file = saved != null ? 'packaged' : 'routerdeck';
+		state.reply = reconfigure(true);
+	}
+	finish(state);
+}
+if (file == 'edited')
+	finish(state);
+
+let text = config_text();
+if (text == current) {
+	if (client && match(sh(client + ' show status'), /Unable to connect/))
+		state.reply = reconfigure(false);
+	finish(state);
+}
+writefile(CHECK, text);
+let problem = trim(sh("/usr/sbin/bird -p -c '" + CHECK + "'"));
+unlink(CHECK);
+if (problem != '') {
+	state.error = replace(problem, CHECK, BIRD_CONF);
+	finish(state);
+}
+if (file == 'packaged') {
+	mkdir('/etc/routerdeck', 0755);
+	writefile(SAVED, current);
+}
+write_text(BIRD_CONF, text);
+state.file = 'routerdeck';
+state.reply = reconfigure(file != 'routerdeck');
+finish(state);

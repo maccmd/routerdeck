@@ -108,10 +108,13 @@ npm run test:vm -- --project=chromium-1440
 npx playwright test --config playwright.lifecycle.config.mjs
 ```
 
-Some checks need optional packages in the guest (ttyd, wireguard-tools and
-kmod-wireguard, miniupnpd-nftables, ddns-scripts, sqm-scripts, iperf3,
-etherwake, and `kmod-mac80211-hwsim` with `wpad` for WiFi) and skip without
-them. For the 24.10 guest:
+Some checks need optional packages in the guest and skip without them:
+ttyd, wireguard-tools and kmod-wireguard, miniupnpd-nftables, ddns-scripts,
+sqm-scripts, iperf3, etherwake, `kmod-mac80211-hwsim` with `wpad` for WiFi,
+gre, vxlan, proto-bonding, kmod-dummy, xl2tpd, rp-pppoe-server, openvpn,
+strongswan-minimal with strongswan-swanctl, and bird2, bird2c and kmod-veth
+(OSPF and BGP run against a second bird in a network namespace).
+For the 24.10 guest:
 
 ```sh
 ROUTERDECK_VM_PORT=8089 ROUTERDECK_SSH_PORT=2223 npm run test:vm -- --project=chromium-1440

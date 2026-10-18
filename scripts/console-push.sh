@@ -14,7 +14,7 @@ tar -xof -
 find htdocs/routerdeck -type f | while read -r file; do mkdir -p "/www/routerdeck"; cp "$file" "/www/routerdeck/${file#htdocs/routerdeck/}"; done
 cd root
 find . -type f | while read -r file; do mkdir -p "/${file%/*}"; cp "$file" "/${file#./}"; done
-chmod 755 /etc/init.d/routerdeck-safemode /usr/libexec/routerdeck/safemode-watchdog /usr/libexec/routerdeck/diag /etc/init.d/routerdeck-netwatch /usr/libexec/routerdeck/netwatch /usr/libexec/routerdeck/run-script /usr/libexec/routerdeck/queues /etc/hotplug.d/iface/90-routerdeck-queues /etc/init.d/routerdeck-graphing /usr/libexec/routerdeck/graphing; /etc/init.d/rpcd restart >/dev/null 2>&1; sleep 1
+chmod 755 /etc/init.d/routerdeck-safemode /usr/libexec/routerdeck/safemode-watchdog /usr/libexec/routerdeck/diag /etc/init.d/routerdeck-netwatch /usr/libexec/routerdeck/netwatch /usr/libexec/routerdeck/run-script /usr/libexec/routerdeck/queues /etc/hotplug.d/iface/90-routerdeck-queues /etc/init.d/routerdeck-graphing /usr/libexec/routerdeck/graphing /usr/libexec/routerdeck/bird; /etc/init.d/rpcd restart >/dev/null 2>&1; sleep 1
 rm -rf /tmp/routerdeck-push
 /etc/init.d/rpcd reload
 echo "RouterDeck Console pushed; rpcd reloaded."

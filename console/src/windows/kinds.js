@@ -50,6 +50,11 @@ export const WINDOW_KINDS = {
  'ip-ddns': { title: 'Dynamic DNS', size: { w: 900, h: 320 }, tabs: [{ label: 'Services', model: 'ddns-services' }] },
  queues: { title: 'Queues', size: { w: 900, h: 300 }, tabs: [{ label: 'Simple Queues', model: 'simple-queues' }, { label: 'SQM', model: 'sqm-queues' }] },
  'routing-tables': { title: 'Routing Tables', size: { w: 560, h: 280 }, tabs: [{ label: 'Tables', model: 'routing-tables' }] },
+ 'routing-ospf': { title: 'OSPF', size: { w: 860, h: 340 }, tabs: [
+  { label: 'Instances', model: 'ospf-instances' }, { label: 'Areas', model: 'ospf-areas' }, { label: 'Interface Templates', model: 'ospf-templates' },
+  { label: 'Neighbors', model: 'ospf-neighbors' }, { label: 'LSAs', model: 'ospf-lsas' }, { label: 'Routes', model: 'ospf-routes' }
+ ] },
+ 'routing-bgp': { title: 'BGP', size: { w: 900, h: 320 }, tabs: [{ label: 'Connections', model: 'bgp-connections' }, { label: 'Sessions', model: 'bgp-sessions' }, { label: 'Routes', model: 'bgp-routes' }] },
  log: { title: 'Log', size: { w: 860, h: 420 }, tabs: [{ label: 'Log', model: 'log' }] },
  'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
  'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },

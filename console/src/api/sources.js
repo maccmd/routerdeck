@@ -113,6 +113,7 @@ export const SOURCES = {
  pppfiles: [() => client.call('routerdeck', 'pppfiles'), 10000],
  openvpn: [() => client.call('routerdeck', 'openvpn').catch(() => ({ installed: false, instances: {} })), 3000],
  ipsec: [() => client.call('routerdeck', 'ipsec').catch(() => ({ installed: false, sas: [] })), 3000],
+ bird: [() => client.call('routerdeck', 'bird').catch(() => ({ installed: false, protocols: [], neighbors: [], lsas: [], routes: [] })), 3000],
  crontab: [() => client.call('routerdeck', 'crontab'), 5000],
  'uci:wireless': [() => client.call('uci', 'get', { config: 'wireless' }).then(reply => reply?.values ?? {}, () => ({})), 5000],
  // netifd's network.wireless rejects uhttpd's session argument; luci-rpc wraps it.

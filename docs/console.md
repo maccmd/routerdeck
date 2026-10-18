@@ -122,6 +122,8 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | IP ▸ Dynamic DNS | `ddns` service sections (ddns-scripts) and its run directory | X, R updater running, 6 IPv6 | Provider list from ddns-scripts or a custom update URL |
 | Routing ▸ Rules | `rule` and `rule6` sections, `ip rule` | X, I invert, D kernel rule, A active | Policy routing to other tables |
 | Routing ▸ Tables | `/etc/iproute2/rt_tables`, with routes and rules per table | D built in or unnamed | Named tables for routes and rules; a table in use cannot be removed |
+| Routing ▸ OSPF | `ospf`, `ospf_area` and `ospf_interface` sections of `/etc/config/routerdeck`, written to `/etc/bird.conf`; `birdc` for neighbors, LSAs and routes | X, R running, D written by hand; F full; P passive; A active route | OSPFv2 or v3 instances that redistribute connected, static or BGP routes and can originate a default route; areas (stub, NSSA); interface templates by interface or network with cost, priority, network type, timers, passive and authentication |
+| Routing ▸ BGP | `bgp` sections of `/etc/config/routerdeck`, written to `/etc/bird.conf`; `birdc` for sessions and routes | X, E established, D written by hand; A active route | Connections with local and remote AS, networks to announce, redistribution, default route, multihop, hold time and TCP MD5 key; sessions with prefixes and the last error |
 | Queues ▸ SQM | `queue` sections (sqm-scripts), `tc` | X, R shaping | cake or fq_codel per device with link-layer settings |
 | Queues ▸ Simple Queues | `queue` sections of `/etc/config/routerdeck`, HTB classes made by `/usr/libexec/routerdeck/queues` | X, S shaping | Per address or network: max and guaranteed upload and download, priority; download shaped on the LAN device, upload on an ifb device; live rates and bytes |
 | System ▸ … | `/etc/config/system`, `/etc/crontabs/root`, `rc list`, apk/opkg databases | — | Scheduler jobs: "# name" lines name them, commented-out jobs are disabled |
@@ -185,7 +187,9 @@ names come from the form labels (*Src. Address* is `src-address`).
   `settings`, `pool`, `ipsec peer|policy|proposal|active-peers`, `dhcp-server`,
   `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
   `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
-  `dhcp-server binding`), `/ppp` (`secret`, `pppoe-server`), `/routing rule|table`, `/queue simple|sqm`, `/log`, `/system`
+  `dhcp-server binding`), `/ppp` (`secret`, `pppoe-server`), `/routing rule|table`,
+  `/routing ospf instance|area|interface-template|neighbor|lsa|route`,
+  `/routing bgp connection|session|route`, `/queue simple|sqm`, `/log`, `/system`
   (`identity`, `clock`, `ntp client`, `logging`, `package` with `install`,
   `uninstall`, `upgrade` and `check-for-updates`, `scheduler`, `script` with
   `run` and `script job`, `startup`, `resource`, `leds`, `history`, and
@@ -214,8 +218,8 @@ names come from the form labels (*Src. Address* is `src-address`).
 Build the package and install `routerdeck-console` as described in
 [Installation](installation.md), then open `http://<router>/routerdeck/` and
 log in with a router account (root by default). Some windows need extra
-packages, listed on the same page; the menu hides UPnP, Dynamic DNS, Queues,
-Bandwidth Test and Wake on LAN until theirs is installed.
+packages, listed on the same page; the menu hides UPnP, Dynamic DNS, IPsec,
+OSPF, BGP, Bandwidth Test and Wake on LAN until theirs is installed.
 
 ## How changes are made
 
@@ -243,7 +247,15 @@ Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
    after changes to WireGuard peers, restarts that interface, because netifd
    reads peers only when it brings the interface up; after changes to mount
    points, unmounts those removed or disabled and runs `block mount`; after
-   changes to LEDs, runs `/etc/init.d/led start`.
+   changes to LEDs, runs `/etc/init.d/led start`;
+7. after changes to `/etc/config/routerdeck`, has `/usr/libexec/routerdeck/bird`
+   write `/etc/bird.conf` and run `birdc configure`, but only while the file is
+   missing, the one bird2 installed (its checksum is in the package database)
+   or one it wrote (first line `# Written by RouterDeck Console`). The file is
+   checked with `bird -p` first and kept when bird rejects it; the windows show
+   bird's message. bird's own file is saved in `/etc/routerdeck` and put back
+   when the last OSPF instance and BGP connection are removed. Protocols are
+   named `rd_<name>`; only OSPF and BGP routes go to the kernel.
 
 Safe Mode stores a snapshot of those configurations. A procd service
 (`routerdeck-safemode`), separate from rpcd, watches the console's heartbeats
@@ -313,6 +325,13 @@ needs SSL, or the browser blocks the embedded terminal.
 - The PPPoE server shares one session options file; PPTP and L2TP servers,
   and OpenVPN and IPsec certificate authorities, are not managed here
   (certificates are files you upload in Files).
+- OSPF and BGP cover what the windows show: redistribution and announced
+  networks, not bird's filter language, route maps, communities, BFD or RIP.
+  A BGP connection carries the address family of its neighbor. Safe Mode and
+  Undo restore the sections in `/etc/config/routerdeck` and thereby bird's
+  configuration, but cannot bring back adjacencies that were lost meanwhile
+  any sooner than OSPF and BGP re-form them. A `/etc/bird.conf` edited by
+  hand is never overwritten; its protocols are shown read-only.
 - fw4 resets rule counters whenever the firewall reloads; rules sharing a name
   show no counters, because nftables reports them under that one name.
 - Safe Mode rolls back after 120 seconds without heartbeats, not after the TCP

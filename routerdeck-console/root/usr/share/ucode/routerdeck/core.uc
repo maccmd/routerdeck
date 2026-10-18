@@ -28,6 +28,11 @@ export const CONFIGS = [
 ];
 // Files only root may read.
 const PRIVATE = [ 'chap-secrets', 'pap-secrets' ];
+// Routing ▸ OSPF and BGP write bird's configuration while it is the
+// packaged one or starts with this marker.
+export const BIRD_CONF = '/etc/bird.conf';
+export const BIRD_MARKER = '# Written by RouterDeck Console';
+export const BIRD_STATE = RUN + '/bird.json';
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -59,6 +64,19 @@ export function write_text(path, text) {
 
 export function write_json(path, value) {
 	return write_text(path, sprintf('%J', value));
+};
+
+// Checksums apk or opkg recorded for the /etc/bird.conf bird2 or bird3
+// installed, to tell the packaged file from one edited by hand.
+export function bird_package_sums() {
+	let sums = [];
+	for (let path in [ '/lib/apk/packages/bird2.conffiles_static', '/lib/apk/packages/bird3.conffiles_static', '/usr/lib/opkg/status' ])
+		for (let line in split(readfile(path) ?? '', '\n')) {
+			let found = match(line, /^ ?\/etc\/bird\.conf ([0-9a-f]+)$/);
+			if (found)
+				push(sums, found[1]);
+		}
+	return sums;
 };
 
 export function config_text(name) {
@@ -125,7 +143,7 @@ export function announce(names) {
 		// with procd yet; it is enabled and restarted directly.
 		// Simple Queues are set up again from the configuration.
 		else if (name == 'routerdeck')
-			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1; /etc/init.d/routerdeck-graphing enable; /etc/init.d/routerdeck-graphing restart >/dev/null 2>&1; /usr/libexec/routerdeck/queues >/dev/null 2>&1');
+			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1; /etc/init.d/routerdeck-graphing enable; /etc/init.d/routerdeck-graphing restart >/dev/null 2>&1; /usr/libexec/routerdeck/queues >/dev/null 2>&1; /usr/libexec/routerdeck/bird >/dev/null 2>&1');
 		else {
 			bus.call('service', 'event', { type: 'config.change', data: { package: name } });
 			start_unregistered(bus, name);

@@ -45,6 +45,8 @@ Some windows appear only when the software behind them is installed:
 | New Shell | `ttyd` |
 | PPP (PPPoE) | `ppp-mod-pppoe` |
 | WireGuard | `wireguard-tools`, `kmod-wireguard` (restart the network after installing) |
+| IP ▸ IPsec | `strongswan-minimal`, `strongswan-swanctl` |
+| Routing ▸ OSPF, BGP | `bird2`, `bird2c` |
 | IP ▸ UPnP | `miniupnpd-nftables` |
 | IP ▸ Dynamic DNS | `ddns-scripts` |
 | Queues | `sqm-scripts` |

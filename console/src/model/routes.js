@@ -53,7 +53,7 @@ export function createRoutesModel(family) {
    { id: 'type', label: 'Type', width: 80, hidden: family === 4 },
    { id: 'protocol', label: 'Protocol', width: 70, hidden: true }
   ],
-  flagLegend: { X: 'disabled', D: 'dynamic', A: 'active', C: 'connect', S: 'static' },
+  flagLegend: { X: 'disabled', D: 'dynamic', A: 'active', C: 'connect', S: 'static', B: 'from bird (OSPF or BGP)' },
   defaultSort: 'dst',
   filter: {
    id: 'table', label: 'Routing table', default: 'main',
@@ -90,7 +90,7 @@ export function createRoutesModel(family) {
     rows.push({
      key: `kernel:${entry.table}:${entry.dst}:${entry.gateway}:${route.dev ?? ''}:${route.type ?? ''}:${route.metric ?? 0}:${route.from ?? ''}`,
      dynamic: true, readOnly: true, route,
-     flags: 'DA' + (connect ? 'C' : ''),
+     flags: 'DA' + (connect ? 'C' : '') + (route.protocol === 'bird' ? 'B' : ''),
      cells: {
       dst: entry.dst, gateway: entry.gateway, distance: String(route.metric ?? 0), table: entry.table, prefsrc: route.prefsrc ?? route.from ?? '',
       interface: route.dev ?? '', type: route.type ?? 'unicast', protocol: route.protocol ?? ''

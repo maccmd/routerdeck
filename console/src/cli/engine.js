@@ -46,7 +46,11 @@ const TREE = {
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
  ppp: { children: { secret: { model: 'ppp-secrets' }, 'pppoe-server': { model: 'ppp-servers' } } },
- routing: { children: { rule: { model: 'routing-rules' }, table: { model: 'routing-tables' } } },
+ routing: { children: {
+  rule: { model: 'routing-rules' }, table: { model: 'routing-tables' },
+  ospf: { children: { instance: { model: 'ospf-instances' }, area: { model: 'ospf-areas' }, 'interface-template': { model: 'ospf-templates' }, neighbor: { model: 'ospf-neighbors' }, lsa: { model: 'ospf-lsas' }, route: { model: 'ospf-routes' } } },
+  bgp: { children: { connection: { model: 'bgp-connections' }, session: { model: 'bgp-sessions' }, route: { model: 'bgp-routes' } } }
+ } },
  queue: { children: { simple: { model: 'simple-queues' }, sqm: { model: 'sqm-queues' } } },
  log: { model: 'log' },
  system: { commands: ['reboot', 'reset-configuration'], children: {

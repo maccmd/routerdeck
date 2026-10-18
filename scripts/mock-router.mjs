@@ -90,6 +90,11 @@ function initialConfigs() {
  };
  const rtTables = '#\n# reserved values\n#\n128\tprelocal\n255\tlocal\n254\tmain\n253\tdefault\n0\tunspec\n#\n# local\n#\n100\tisp2\n';
  routerdeck.graphing = section('graphing', 'graphing', 6, { enabled: '1' });
+ // One OSPF neighbor on the LAN and an upstream BGP session.
+ routerdeck.ospf1 = section('ospf', 'ospf1', 7, { redistribute: ['connected'] });
+ routerdeck.backbone = section('ospf_area', 'backbone', 8, { instance: 'ospf1', area_id: '0.0.0.0' });
+ routerdeck.cfg2e92bd = section('ospf_interface', 'cfg2e92bd', 9, { area: 'backbone', interface: ['br-lan'] }, true);
+ routerdeck.isp = section('bgp', 'isp', 10, { as: '65001', remote_address: '203.0.113.1', remote_as: '64500', network: ['192.168.88.0/24'] });
  routerdeck.laptop = section('queue', 'laptop', 5, { target: ['192.168.88.120'], max_up: '5M', max_down: '20M', comment: 'Homework only' });
  const chapSecrets = '#USERNAME  PROVIDER  PASSWORD  IPADDRESS\nalice * wonderland *\n';
  const sysctl = '# User defined entries should be added to this file not to /etc/sysctl.d/* as\n# that directory is not backed-up by default and will not survive a reimage\n';
@@ -342,6 +347,43 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   });
  }
 
+ // bird as birdc would report the configuration the plugin writes: every
+ // OSPF instance with interfaces has one neighbor, every BGP session is up.
+ function bird() {
+  const since = '09:00:00.000', protocols = [], neighbors = [], lsas = [], routes = [];
+  const base = (name, proto, table) => ({ name, proto, table, state: 'up', since, info: '', details: {}, imported: 0, exported: 0, preferred: 0, filtered: 0 });
+  protocols.push(base('rdx_device', 'Device', '---'), base('rdx_direct', 'Direct', '---'), base('rdx_kernel4', 'Kernel', 'master4'), base('rdx_kernel6', 'Kernel', 'master6'));
+  const areas = sectionsOf('routerdeck', 'ospf_area').filter(item => item.disabled !== '1');
+  const templates = sectionsOf('routerdeck', 'ospf_interface').filter(item => item.disabled !== '1');
+  for (const instance of sectionsOf('routerdeck', 'ospf')) {
+   const name = `rd_${instance['.name']}`, mine = areas.filter(area => area.instance === instance['.name']), disabled = instance.disabled === '1';
+   if (!mine.length) continue;
+   const active = disabled ? [] : templates.filter(item => mine.some(area => area['.name'] === item.area));
+   protocols.push({ ...base(name, 'OSPF', instance.version === '3' ? 'master6' : 'master4'), state: disabled ? 'down' : 'up', info: disabled ? '' : active.length ? 'Running' : 'Alone', imported: active.length ? 2 : 0, exported: active.length ? 1 : 0, preferred: active.length ? 1 : 0 });
+   if (!active.length) continue;
+   const device = [].concat(active[0].interface ?? [])[0] ?? 'br-lan', dead = (30 + seconds() % 10).toFixed(3);
+   neighbors.push({ protocol: name, router_id: '192.168.88.2', priority: 1, state: 'Full/DR', dead, interface: device, address: '192.168.88.2' });
+   for (const area of mine) {
+    const scope = `Area ${area.area_id ?? '0.0.0.0'}`;
+    lsas.push({ protocol: name, scope, type: '0001', id: '192.168.88.1', router: '192.168.88.1', sequence: '80000004', age: Math.floor(seconds() % 1800), checksum: '6d2a' });
+    lsas.push({ protocol: name, scope, type: '0001', id: '192.168.88.2', router: '192.168.88.2', sequence: '80000007', age: 412, checksum: 'b81c' });
+    lsas.push({ protocol: name, scope, type: '0002', id: '192.168.88.2', router: '192.168.88.2', sequence: '80000003', age: 410, checksum: '1f07' });
+   }
+   lsas.push({ protocol: name, scope: 'Global', type: '0005', id: '10.20.0.0', router: '192.168.88.2', sequence: '80000001', age: 380, checksum: '9e41' });
+   routes.push({ dst: '192.168.88.0/24', type: 'unicast', protocol: name, since, best: false, ospf: 'I', preference: 150, metric: '10', origin: '192.168.88.2', interface: device });
+   routes.push({ dst: '10.20.0.0/16', type: 'unicast', protocol: name, since, best: true, ospf: 'E2', preference: 150, metric: '10/10000', origin: '192.168.88.2', gateway: '192.168.88.2', interface: device });
+  }
+  for (const peer of sectionsOf('routerdeck', 'bgp')) {
+   const name = `rd_${peer['.name']}`, disabled = peer.disabled === '1';
+   const details = disabled ? {} : { 'BGP state': 'Established', 'Neighbor address': peer.remote_address, 'Neighbor AS': peer.remote_as, 'Local AS': peer.as, 'Neighbor ID': peer.remote_address };
+   protocols.push({ ...base(name, 'BGP', '---'), state: disabled ? 'down' : 'up', info: disabled ? '' : 'Established', details, imported: disabled ? 0 : 2, exported: disabled ? 0 : [].concat(peer.network ?? []).length, preferred: disabled ? 0 : 2 });
+   if (disabled) continue;
+   routes.push({ dst: '100.64.10.0/24', type: 'unicast', protocol: name, since, best: true, preference: 100, origin: `AS${peer.remote_as}i`, gateway: peer.remote_address, interface: 'eth1' });
+   routes.push({ dst: '203.0.113.128/25', type: 'unicast', protocol: name, since, best: true, preference: 100, origin: `AS${peer.remote_as} 64511i`, gateway: peer.remote_address, interface: 'eth1' });
+  }
+  return { installed: true, client: true, running: true, version: '2.19.2', file: 'routerdeck', error: null, protocols, neighbors, lsas, routes, truncated: false };
+ }
+
  function routes4() {
   const result = [];
   for (const live of ifaces()) {
@@ -355,6 +397,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
    for (const route of live.route) result.unshift({ dst: 'default', gateway: route.nexthop, dev: live.l3_device, protocol: 'static', prefsrc: route.source.split('/')[0], flags: [] });
   }
   const devicesByName = new Map(ifaces().map(item => [item.interface, item.l3_device]));
+  for (const route of bird().routes.filter(item => item.best && item.gateway)) result.push({ dst: route.dst, gateway: route.gateway, dev: route.interface, protocol: 'bird', metric: 32, flags: [] });
   for (const route of sectionsOf('network', 'route').filter(item => item.disabled !== '1')) {
    const entry = { dst: route.target.includes('/') ? route.target : `${route.target}/32`, dev: devicesByName.get(route.interface), protocol: 'static', flags: [] };
    if (route.gateway) entry.gateway = route.gateway;
@@ -883,6 +926,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   },
   pppfiles: () => ({ chap: configs['chap-secrets'], pap: configs['pap-secrets'], options: configs['pppoe-options'], server: true }),
   openvpn: () => ({ installed: true, instances: Object.fromEntries(sectionsOf('openvpn', 'openvpn').filter(item => item.enabled === '1').map(item => [item['.name'], { running: true }])) }),
+  bird,
   ipsec: () => ({ installed: true, legacy: false, sas: sectionsOf('ipsec', 'remote').filter(item => item.enabled === '1').map((item, index) => ({
    name: item['.name'], id: index + 1, state: 'ESTABLISHED', version: 'IKEv2', local: '203.0.113.42', remote: item.gateway, established: Math.floor(seconds()) + 300,
    children: [].concat(item.tunnel ?? []).map((tunnel, child) => ({ name: tunnel, id: child + 1, state: 'INSTALLED', mode: 'TUNNEL', in: 120000 + Math.floor(seconds()) * 800, out: 98000 + Math.floor(seconds()) * 600, local: [].concat(configs.ipsec[tunnel]?.local_subnet ?? []).join(' '), remote: [].concat(configs.ipsec[tunnel]?.remote_subnet ?? []).join(' ') }))
