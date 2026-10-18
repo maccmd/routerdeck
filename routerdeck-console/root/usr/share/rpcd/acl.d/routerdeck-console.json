@@ -4,10 +4,10 @@
 		"read": {
 			"ubus": {
 				"iwinfo": [ "assoclist", "devices", "info" ],
-				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices" ],
+				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices", "getWirelessDevices" ],
+				"network": [ "get_proto_handlers" ],
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
-				"network.wireless": [ "status" ],
 				"routerdeck": [ "conntrack", "fw_counters", "history", "info", "log", "ping", "routes", "terminal", "traceroute" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],

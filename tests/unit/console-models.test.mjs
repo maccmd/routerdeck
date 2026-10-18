@@ -282,3 +282,45 @@ test('DHCPv6 bindings and making them static', () => {
  rejects(() => MODELS['dhcp6-bindings'].save({ duid: 'xyz', hostid: '', hostname: '', leasetime: '' }, null, input), 'duid');
  rejects(() => MODELS['dhcp6-bindings'].save({ duid: '00010001CCDD', hostid: '', hostname: '', leasetime: '' }, null, input), 'duid');
 });
+
+test('WiFi interfaces, radios and registrations from a real hwsim setup', async () => {
+ const wifiData = JSON.parse(await readFile(new URL('../fixtures/openwrt-25.12/wireless.json', import.meta.url), 'utf8'));
+ const input = { ...data(), ...wifiData };
+ input.leases.dhcp_leases = [{ hostname: 'tablet', macaddr: '02:00:00:00:01:00', ipaddr: '192.168.77.50', expires: 100 }];
+ const ifaces = MODELS['wifi-interfaces'].rows(input);
+ assert.deepEqual(ifaces.map(row => [row.cells.name, row.cells.ssid, row.cells.mode, row.flags, row.cells.security, row.cells.clients, row.cells.channel]), [
+  ['phy0-ap0', 'RD-Test', 'ap', 'R', 'WPA2-PSK', '1', '6 (2437 MHz)'],
+  ['phy1-sta0', 'RD-Test', 'sta', 'R', 'WPA2-PSK', '', '6 (2437 MHz)']
+ ]);
+ const radios = MODELS['wifi-radios'].rows(input);
+ assert.deepEqual(radios.map(row => [row.key, row.flags, row.cells.band, row.cells.width, row.cells.txpower]), [['radio0', 'R', '2.4 GHz', 'HT20', '30 dBm'], ['radio1', 'R', '2.4 GHz', 'HT20', '30 dBm']]);
+ const stations = MODELS['wifi-registration'].rows(input);
+ assert.deepEqual(stations.map(row => [row.cells.mac, row.cells.interface, row.cells.signal, row.cells.tx, row.cells.hostname]), [['02:00:00:00:01:00', 'phy0-ap0', '-20 dBm', '1.0 Mbps', 'tablet']]);
+
+ const ap = ifaces[0];
+ const values = MODELS['wifi-interfaces'].values(ap, input);
+ assert.equal(values.key, 'routerdeck-test');
+ assert.deepEqual(MODELS['wifi-interfaces'].save({ ...values, ssid: 'RD-Changed' }, ap, input, { dirty: new Set(['ssid']) }).ops[0].values, { ssid: 'RD-Changed' });
+ assert.deepEqual(MODELS['wifi-interfaces'].save({ ...values, encryption: 'none' }, ap, input, { dirty: new Set(['encryption']) }).ops[0].values, { encryption: 'none', key: null });
+ rejects(() => MODELS['wifi-interfaces'].save({ ...values, key: 'short' }, ap, input, { dirty: new Set(['key']) }), 'key');
+ rejects(() => MODELS['wifi-interfaces'].save({ ...values, ssid: 'x'.repeat(33) }, ap, input), 'ssid');
+ const added = MODELS['wifi-interfaces'].save({ ...MODELS['wifi-interfaces'].defaults(input), ssid: 'Guest', key: 'guest-password' }, null, input);
+ assert.deepEqual(added.ops[0], { op: 'add', config: 'wireless', type: 'wifi-iface', values: { ssid: 'Guest', mode: 'ap', device: 'radio0', network: ['lan'], encryption: 'sae-mixed', key: 'guest-password', hidden: null, isolate: null } });
+ rejects(() => MODELS['wifi-radios'].save({ ...MODELS['wifi-radios'].values(radios[0], input), channel: '36' }, radios[0], input, { dirty: new Set(['channel']) }), 'channel');
+ assert.deepEqual(MODELS['wifi-radios'].save({ ...MODELS['wifi-radios'].values(radios[0], input), channel: '11' }, radios[0], input, { dirty: new Set(['channel']) }).ops[0].values, { channel: '11' });
+});
+
+test('PPP clients are PPP-protocol networks', () => {
+ const input = data();
+ input.protos = { dhcp: {}, ppp: {}, pppoe: {}, static: {} };
+ input['uci:network'].isp = { '.type': 'interface', '.name': 'isp', '.index': 9, '.anonymous': false, proto: 'pppoe', device: 'eth1', username: 'user@isp', password: 'secret', disabled: '1' };
+ const rows = MODELS.ppp.rows(input);
+ assert.deepEqual(rows.map(row => [row.key, row.flags, row.cells.type, row.cells.user]), [['isp', 'X', 'pppoe', 'user@isp']]);
+ const created = MODELS.ppp.save({ ...MODELS.ppp.defaults(input), name: 'pppoe_out', device: 'eth1', username: 'u', password: 'p', service: 'internet' }, null, input);
+ assert.deepEqual(created.ops[0], { op: 'add', config: 'network', type: 'interface', name: 'pppoe_out', values: { proto: 'pppoe', device: 'eth1', username: 'u', password: 'p', service: 'internet', ac: null, peerdns: null, defaultroute: null, keepalive: null, mtu: null } });
+ assert.deepEqual(created.ops[1], { op: 'set', config: 'firewall', section: 'cfg03dc81', values: { network: ['wan', 'wan6', 'pppoe_out'] } });
+ rejects(() => MODELS.ppp.save({ ...MODELS.ppp.defaults(input), name: 'x', device: '' }, null, input), 'device');
+ delete input.protos.pppoe;
+ assert.equal(MODELS.ppp.canAdd(input), false);
+ assert.equal(MODELS.ppp.status(input), 'PPPoE needs the ppp-mod-pppoe package');
+});

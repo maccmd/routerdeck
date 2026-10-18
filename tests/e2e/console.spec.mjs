@@ -111,6 +111,8 @@ test('keyboard opens submenus and cycles windows', async ({ page }) => {
  await page.keyboard.press('ArrowDown');
  await expect(page.getByRole('menuitem', { name: 'Bridge' })).toBeFocused();
  await page.keyboard.press('ArrowDown');
+ await expect(page.getByRole('menuitem', { name: 'PPP' })).toBeFocused();
+ await page.keyboard.press('ArrowDown');
  await expect(page.getByRole('menuitem', { name: 'IP', exact: true })).toBeFocused();
  await page.keyboard.press('ArrowRight');
  await expect(page.getByRole('menuitem', { name: 'Addresses', exact: true })).toBeFocused();

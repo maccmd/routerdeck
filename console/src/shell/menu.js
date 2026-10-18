@@ -3,8 +3,10 @@
 // whose `requires` capability is missing are hidden rather than greyed out.
 
 export const MENU = [
+ { id: 'wifi', label: 'WiFi', icon: 'wireless', window: 'wifi', requires: 'wireless' },
  { id: 'interfaces', label: 'Interfaces', icon: 'interfaces', window: 'interfaces' },
  { id: 'bridge', label: 'Bridge', icon: 'bridge', window: 'bridge' },
+ { id: 'ppp', label: 'PPP', icon: 'ppp', window: 'ppp' },
  { id: 'ip', label: 'IP', icon: 'ip', children: [
   { id: 'ip-addresses', label: 'Addresses', window: 'ip-addresses' },
   { id: 'ip-routes', label: 'Routes', window: 'ip-routes' },

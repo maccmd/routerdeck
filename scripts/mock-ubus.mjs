@@ -54,7 +54,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   routerdeck: {
    info: (args, sid) => [0, {
     version, api: 1, mock: true, user: sessions.get(sid)?.username,
-    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true }
+    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true }
    }],
    routes: (args, sid) => [0, { routes: args.family === 6 ? routerOf(sid).routes6() : routerOf(sid).routes4() }],
    fw_counters: (args, sid) => [0, routerOf(sid).counters()],
@@ -72,6 +72,7 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   },
   'luci-rpc': {
    getNetworkDevices: (args, sid) => [0, routerOf(sid).devices()],
+   getWirelessDevices: (args, sid) => [0, routerOf(sid).wirelessStatus()],
    getDHCPLeases: (args, sid) => [0, routerOf(sid).leases()]
   },
   'network.interface': {
@@ -79,6 +80,14 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   },
   'network.device': {
    status: (args, sid) => [0, routerOf(sid).netdev()]
+  },
+  network: {
+   get_proto_handlers: () => [0, { dhcp: {}, dhcpv6: {}, ppp: {}, pppoe: {}, static: {}, wireguard: {} }]
+  },
+  iwinfo: {
+   devices: (args, sid) => [0, { devices: Object.keys(routerOf(sid).wifi()) }],
+   info: (args, sid) => { const entry = routerOf(sid).wifi()[args.device]; return entry ? [0, entry.info] : [4]; },
+   assoclist: (args, sid) => { const entry = routerOf(sid).wifi()[args.device]; return entry ? [0, { results: entry.stations }] : [4]; }
   }
  };
 

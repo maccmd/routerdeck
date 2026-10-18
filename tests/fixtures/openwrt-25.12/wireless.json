@@ -1,0 +1,355 @@
+{
+ "uci:wireless": {
+  "radio0": {
+   ".anonymous": false,
+   ".type": "wifi-device",
+   ".name": "radio0",
+   ".index": 0,
+   "type": "mac80211",
+   "path": "virtual/mac80211_hwsim/hwsim0",
+   "band": "2g",
+   "channel": "6",
+   "htmode": "HT20",
+   "country": "US"
+  },
+  "default_radio0": {
+   ".anonymous": false,
+   ".type": "wifi-iface",
+   ".name": "default_radio0",
+   ".index": 1,
+   "device": "radio0",
+   "network": "lan",
+   "mode": "ap",
+   "ssid": "RD-Test",
+   "encryption": "psk2",
+   "disabled": "0",
+   "key": "routerdeck-test"
+  },
+  "radio1": {
+   ".anonymous": false,
+   ".type": "wifi-device",
+   ".name": "radio1",
+   ".index": 2,
+   "type": "mac80211",
+   "path": "virtual/mac80211_hwsim/hwsim1",
+   "band": "2g",
+   "channel": "6",
+   "htmode": "HT20",
+   "country": "US"
+  },
+  "default_radio1": {
+   ".anonymous": false,
+   ".type": "wifi-iface",
+   ".name": "default_radio1",
+   ".index": 3,
+   "device": "radio1",
+   "network": "rdsta",
+   "mode": "sta",
+   "ssid": "RD-Test",
+   "encryption": "psk2",
+   "disabled": "0",
+   "key": "routerdeck-test"
+  }
+ },
+ "wireless": {
+  "radio0": {
+   "up": true,
+   "pending": false,
+   "autostart": true,
+   "disabled": false,
+   "retry_setup_failed": false,
+   "config": {
+    "type": "mac80211",
+    "band": "2g",
+    "channel": "6",
+    "country": "US",
+    "htmode": "HT20",
+    "path": "virtual/mac80211_hwsim/hwsim0"
+   },
+   "interfaces": [
+    {
+     "section": "default_radio0",
+     "config": {
+      "network": [
+       "lan"
+      ],
+      "device": [
+       "radio0"
+      ],
+      "mode": "ap",
+      "disabled": false,
+      "encryption": "psk2",
+      "key": "routerdeck-test",
+      "ssid": "RD-Test",
+      "radios": []
+     },
+     "ifname": "phy0-ap0",
+     "vlans": [],
+     "stations": []
+    }
+   ]
+  },
+  "radio1": {
+   "up": true,
+   "pending": false,
+   "autostart": true,
+   "disabled": false,
+   "retry_setup_failed": false,
+   "config": {
+    "type": "mac80211",
+    "band": "2g",
+    "channel": "6",
+    "country": "US",
+    "htmode": "HT20",
+    "path": "virtual/mac80211_hwsim/hwsim1"
+   },
+   "interfaces": [
+    {
+     "section": "default_radio1",
+     "config": {
+      "network": [
+       "rdsta"
+      ],
+      "device": [
+       "radio1"
+      ],
+      "mode": "sta",
+      "disabled": false,
+      "encryption": "psk2",
+      "key": "routerdeck-test",
+      "ssid": "RD-Test",
+      "radios": []
+     },
+     "ifname": "phy1-sta0",
+     "vlans": [],
+     "stations": []
+    }
+   ]
+  }
+ },
+ "wifi": {
+  "phy0-ap0": {
+   "info": {
+    "phy": "phy0",
+    "ssid": "RD-Test",
+    "bssid": "02:00:00:00:00:00",
+    "country": "US",
+    "mode": "Master",
+    "channel": 6,
+    "center_chan1": 6,
+    "frequency": 2437,
+    "txpower": 30,
+    "quality": 70,
+    "quality_max": 70,
+    "signal": -20,
+    "noise": 0,
+    "bitrate": 1000,
+    "encryption": {
+     "enabled": true,
+     "wpa": [
+      2
+     ],
+     "authentication": [
+      "psk"
+     ],
+     "ciphers": [
+      "ccmp"
+     ]
+    },
+    "htmodes": [
+     "HT20",
+     "HT40",
+     "VHT20",
+     "VHT40",
+     "VHT80",
+     "VHT80+80",
+     "VHT160",
+     "HE20",
+     "HE40",
+     "HE80",
+     "HE80+80",
+     "HE160",
+     "EHT20",
+     "EHT40",
+     "EHT80",
+     "EHT80+80",
+     "EHT160",
+     "EHT320"
+    ],
+    "hwmodes": [
+     "b",
+     "g",
+     "n",
+     "ac",
+     "ax",
+     "be"
+    ],
+    "hwmodes_text": "ac/ax/b/be/g/n",
+    "hwmode": "n",
+    "htmode": "HT20",
+    "hardware": {
+     "name": "Generic MAC80211"
+    }
+   },
+   "stations": [
+    {
+     "mac": "02:00:00:00:01:00",
+     "signal": -20,
+     "signal_avg": -20,
+     "noise": 0,
+     "inactive": 9780,
+     "connected_time": 42,
+     "thr": 750,
+     "authorized": true,
+     "authenticated": true,
+     "preamble": "short",
+     "wme": true,
+     "mfp": false,
+     "tdls": false,
+     "mesh llid": 0,
+     "mesh plid": 0,
+     "mesh plink": "",
+     "mesh local PS": "",
+     "mesh peer PS": "",
+     "mesh non-peer PS": "",
+     "rx": {
+      "drop_misc": 0,
+      "packets": 14,
+      "bytes": 1498,
+      "ht": true,
+      "vht": false,
+      "he": false,
+      "eht": false,
+      "mhz": 20,
+      "rate": 13000,
+      "mcs": 8,
+      "40mhz": false,
+      "short_gi": false
+     },
+     "tx": {
+      "failed": 0,
+      "retries": 0,
+      "packets": 5,
+      "bytes": 513,
+      "ht": false,
+      "vht": false,
+      "he": false,
+      "eht": false,
+      "mhz": 20,
+      "rate": 1000
+     }
+    }
+   ]
+  },
+  "phy1-sta0": {
+   "info": {
+    "phy": "phy1",
+    "ssid": "RD-Test",
+    "bssid": "02:00:00:00:01:00",
+    "country": "US",
+    "mode": "Client",
+    "channel": 6,
+    "center_chan1": 6,
+    "frequency": 2437,
+    "txpower": 30,
+    "quality": 70,
+    "quality_max": 70,
+    "signal": -20,
+    "noise": -92,
+    "bitrate": 6000,
+    "encryption": {
+     "enabled": true,
+     "wpa": [
+      2
+     ],
+     "authentication": [
+      "psk"
+     ],
+     "ciphers": [
+      "ccmp"
+     ]
+    },
+    "htmodes": [
+     "HT20",
+     "HT40",
+     "VHT20",
+     "VHT40",
+     "VHT80",
+     "VHT80+80",
+     "VHT160",
+     "HE20",
+     "HE40",
+     "HE80",
+     "HE80+80",
+     "HE160",
+     "EHT20",
+     "EHT40",
+     "EHT80",
+     "EHT80+80",
+     "EHT160",
+     "EHT320"
+    ],
+    "hwmodes": [
+     "b",
+     "g",
+     "n",
+     "ac",
+     "ax",
+     "be"
+    ],
+    "hwmodes_text": "ac/ax/b/be/g/n",
+    "hwmode": "n",
+    "htmode": "HT20",
+    "hardware": {
+     "name": "Generic MAC80211"
+    }
+   },
+   "stations": [
+    {
+     "mac": "02:00:00:00:00:00",
+     "signal": -20,
+     "signal_avg": -20,
+     "noise": -92,
+     "inactive": 9790,
+     "connected_time": 42,
+     "thr": 5368,
+     "authorized": true,
+     "authenticated": true,
+     "preamble": "long",
+     "wme": true,
+     "mfp": false,
+     "tdls": false,
+     "mesh llid": 0,
+     "mesh plid": 0,
+     "mesh plink": "",
+     "mesh local PS": "",
+     "mesh peer PS": "",
+     "mesh non-peer PS": "",
+     "rx": {
+      "drop_misc": 15,
+      "packets": 850,
+      "bytes": 83827,
+      "ht": false,
+      "vht": false,
+      "he": false,
+      "eht": false,
+      "mhz": 20,
+      "rate": 1000
+     },
+     "tx": {
+      "failed": 0,
+      "retries": 0,
+      "packets": 13,
+      "bytes": 1416,
+      "ht": false,
+      "vht": false,
+      "he": false,
+      "eht": false,
+      "mhz": 20,
+      "rate": 6000
+     }
+    }
+   ]
+  }
+ }
+}

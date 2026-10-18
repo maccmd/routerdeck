@@ -626,6 +626,7 @@ return {
 						nft: executable('/usr/sbin/nft'),
 						ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
 						log_read: 'log' in objects,
+						wireless: 'network.wireless' in objects,
 						luci_rpc: 'luci-rpc' in objects
 					}
 				};

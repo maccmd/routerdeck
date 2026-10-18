@@ -5,10 +5,11 @@
 import { readFileSync } from 'node:fs';
 
 const captured = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/router.json', import.meta.url), 'utf8'));
+const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/wireless.json', import.meta.url), 'utf8'));
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system'];
 const clone = value => structuredClone(value);
 const section = (type, name, index, values, anonymous = false) => ({ '.anonymous': anonymous, '.type': type, '.name': name, '.index': index, ...values });
 
@@ -26,7 +27,10 @@ function initialConfigs() {
  dhcp.cfg1392bd = section('host', 'cfg1392bd', 20, { name: 'nas', mac: '52:54:00:aa:10:01', ip: '192.168.88.10', dns: '1', duid: '000100012a3b4c5d525400aa1001', hostid: '10' }, true);
  dhcp.cfg1892bd = section('domain', 'cfg1892bd', 21, { name: 'printer.lan', ip: '192.168.88.122' }, true);
  dhcp.cfg1992bd = section('cname', 'cfg1992bd', 22, { cname: 'files.lan', target: 'nas.lan', comment: 'Shared folders' }, true);
- return { network, firewall, dhcp };
+ network.pppoe_backup = section('interface', 'pppoe_backup', 25, { proto: 'pppoe', device: 'eth1', username: 'customer@isp.example', password: 'not-a-real-password', service: 'internet', disabled: '1', comment: 'Backup line' });
+ const wireless = clone(capturedWifi['uci:wireless']);
+ const system = { cfg01e48a: section('system', 'cfg01e48a', 0, { hostname: 'routerdeck-preview', timezone: 'UTC', zonename: 'UTC' }, true) };
+ return { network, firewall, dhcp, wireless, system };
 }
 
 const CLIENTS = [
@@ -287,6 +291,37 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   return result;
  }
 
+ // netifd and iwinfo views of the radios, following the configuration.
+ function wirelessStatus() {
+  const result = {};
+  for (const radio of sectionsOf('wireless', 'wifi-device')) {
+   const up = radio.disabled !== '1';
+   const ifaces = sectionsOf('wireless', 'wifi-iface').filter(item => item.device === radio['.name']);
+   result[radio['.name']] = {
+    up, pending: false, autostart: true, disabled: !up, retry_setup_failed: false, config: { type: 'mac80211', band: radio.band, channel: radio.channel, htmode: radio.htmode, country: radio.country },
+    interfaces: ifaces.map((item, index) => ({ section: item['.name'], config: { mode: item.mode, ssid: item.ssid, encryption: item.encryption, network: [].concat(item.network ?? []), disabled: item.disabled === '1' }, ...(up && item.disabled !== '1' ? { ifname: `phy${radio['.name'].replace(/\D/g, '')}-${item.mode === 'sta' ? 'sta' : 'ap'}${index}` } : {}), vlans: [], stations: [] }))
+   };
+  }
+  return result;
+ }
+
+ function wifi() {
+  const result = {};
+  const template = capturedWifi.wifi['phy0-ap0'];
+  for (const [radioName, state] of Object.entries(wirelessStatus())) {
+   const radio = sectionsOf('wireless', 'wifi-device').find(item => item['.name'] === radioName);
+   for (const iface of state.interfaces.filter(item => item.ifname)) {
+    const ap = iface.config.mode !== 'sta';
+    const channel = radio.channel === 'auto' ? 6 : Number(radio.channel);
+    result[iface.ifname] = {
+     info: { ...template.info, ssid: iface.config.ssid, mode: ap ? 'Master' : 'Client', channel, frequency: 2407 + channel * 5, htmode: radio.htmode, country: radio.country, txpower: Number(radio.txpower ?? 30) },
+     stations: ap ? CLIENTS.slice(1, 3).map((client, index) => ({ ...template.stations[0], mac: client.macaddr, signal: -48 - index * 9, connected_time: 600 + index * 1800 + Math.floor(seconds()) })) : []
+    };
+   }
+  }
+  return result;
+ }
+
  function routes6() {
   const live = ifaces(), byName = new Map(live.map(item => [item.interface, item.l3_device]));
   const result = [{ dst: 'default', from: '2001:db8:42::1234', gateway: 'fe80::1', dev: 'eth1', protocol: 'static', metric: 512, flags: [], pref: 'medium' }];
@@ -362,7 +397,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  return {
   watchdog,
   uci: config => configs[config] ? clone(configs[config]) : null,
-  devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases,
+  devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases, wirelessStatus, wifi,
   history: history_, apply, undo: () => step('undo'), redo: () => step('redo'), safemode,
   terminal: () => ({ installed: false, running: false, port: 7681, ssl: false, interface: '@lan', url_override: null })
  };

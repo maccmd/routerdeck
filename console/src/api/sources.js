@@ -35,10 +35,25 @@ async function log() {
  return { mode: reply.mode, entries: logState.entries };
 }
 
+// iwinfo per wireless device: radio state and connected stations.
+async function wifi() {
+ const devices = (await client.call('iwinfo', 'devices'))?.devices ?? [];
+ const details = await Promise.all(devices.map(device => Promise.all([
+  client.call('iwinfo', 'info', { device }).catch(() => null),
+  client.call('iwinfo', 'assoclist', { device }).catch(() => null)
+ ])));
+ return Object.fromEntries(devices.map((device, index) => [device, { info: details[index][0], stations: details[index][1]?.results ?? [] }]));
+}
+
 export const SOURCES = {
  'uci:network': [uci('network'), 5000],
  'uci:firewall': [uci('firewall'), 5000],
  'uci:dhcp': [uci('dhcp'), 5000],
+ 'uci:wireless': [() => client.call('uci', 'get', { config: 'wireless' }).then(reply => reply?.values ?? {}, () => ({})), 5000],
+ // netifd's network.wireless rejects uhttpd's session argument; luci-rpc wraps it.
+ wireless: [() => client.call('luci-rpc', 'getWirelessDevices').then(reply => reply ?? {}, () => ({})), 3000],
+ wifi: [wifi, 2000],
+ protos: [() => client.call('network', 'get_proto_handlers').then(reply => reply ?? {}), 30000],
  devices: [devices, 1000],
  ifaces: [() => client.call('network.interface', 'dump').then(reply => reply?.interface ?? []), 2000],
  routes4: [() => client.call('routerdeck', 'routes', { family: 4 }).then(reply => reply?.routes ?? []), 3000],

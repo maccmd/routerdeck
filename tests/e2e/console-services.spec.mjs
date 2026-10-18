@@ -74,3 +74,43 @@ test('Safe Mode held by another session can be taken over', async ({ page }) => 
  await expect(page.getByRole('button', { name: 'Safe Mode', exact: true })).toHaveAttribute('aria-pressed', 'true');
  await expect(page.getByRole('toolbar', { name: 'Session' })).toContainText('Safe Mode taken over from root');
 });
+
+test('WiFi interfaces, radios and registered clients', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'WiFi' }).click();
+ const wifi = win(page, 'WiFi');
+ await expect(row(wifi, 'phy0-ap0')).toContainText('WPA2-PSK');
+ await expect(row(wifi, 'phy0-ap0').locator('.is-flags')).toHaveText('R');
+ await expect(row(wifi, 'phy0-ap0').getByRole('gridcell').nth(8)).toHaveText('2');
+ await row(wifi, 'phy0-ap0').dblclick();
+ const item = win(page, 'WiFi Interface <RD-Test>');
+ await item.getByLabel('Passphrase:').fill('short');
+ await item.getByRole('button', { name: 'Apply' }).click();
+ await expect(item.getByText('A passphrase has 8 to 63 characters')).toBeVisible();
+ await item.getByLabel('Passphrase:').fill('routerdeck-test');
+ await item.getByLabel('SSID:', { exact: true }).fill('RD-Home');
+ await item.getByRole('button', { name: 'OK' }).click();
+ await expect(row(wifi, 'phy0-ap0')).toContainText('RD-Home');
+
+ await wifi.getByRole('tab', { name: 'Radios' }).click();
+ await expect(row(wifi, 'radio0')).toContainText('2.4 GHz');
+ await wifi.getByRole('tab', { name: 'Registration' }).click();
+ await expect(row(wifi, 'laptop')).toContainText('dBm');
+ await expect(wifi.getByRole('status').first()).toContainText('2 items');
+});
+
+test('PPP clients list PPPoE networks and create new ones', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'PPP' }).click();
+ const ppp = win(page, 'PPP');
+ await expect(row(ppp, 'pppoe_backup')).toContainText('customer@isp.example');
+ await expect(row(ppp, 'pppoe_backup').locator('.is-flags')).toHaveText('X');
+ await expect(ppp.locator('.rd-grid-comment')).toHaveText(';;; Backup line');
+ await ppp.getByRole('button', { name: 'Add', exact: true }).click();
+ const item = win(page, 'New PPP Client');
+ await item.getByLabel('Name:').fill('isp');
+ await item.getByLabel('User:').fill('me@isp.example');
+ await item.getByRole('button', { name: 'OK' }).click();
+ await expect(item.getByText('PPPoE needs the Ethernet device it dials on')).toBeVisible();
+ await item.getByLabel('Device:').selectOption('eth1');
+ await item.getByRole('button', { name: 'OK' }).click();
+ await expect(row(ppp, 'me@isp.example')).toContainText('pppoe');
+});

@@ -9,6 +9,8 @@ export const WINDOW_KINDS = {
  'ip-firewall': { title: 'Firewall', size: { w: 960, h: 420 }, tabs: [
   { label: 'Filter Rules', model: 'fw-filter' }, { label: 'NAT', model: 'fw-nat' }, { label: 'Connections', model: 'connections' }, { label: 'Zones', model: 'fw-zones' }
  ] },
+ wifi: { title: 'WiFi', size: { w: 900, h: 320 }, tabs: [{ label: 'WiFi Interfaces', model: 'wifi-interfaces' }, { label: 'Radios', model: 'wifi-radios' }, { label: 'Registration', model: 'wifi-registration' }] },
+ ppp: { title: 'PPP', size: { w: 860, h: 280 }, tabs: [{ label: 'Interface', model: 'ppp' }] },
  bridge: { title: 'Bridge', size: { w: 820, h: 340 }, tabs: [{ label: 'Bridge', model: 'bridges' }, { label: 'Ports', model: 'bridge-ports' }, { label: 'VLANs', model: 'bridge-vlans' }] },
  'ipv6-addresses': { title: 'IPv6 Address List', size: { w: 720, h: 320 }, tabs: [{ label: 'Addresses', model: 'addresses6' }] },
  'ipv6-routes': { title: 'IPv6 Route List', size: { w: 900, h: 360 }, tabs: [{ label: 'Routes', model: 'routes6' }] },
