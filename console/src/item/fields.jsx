@@ -34,6 +34,9 @@ export function Field({ field: spec, value, values, onChange, error, disabled })
   case 'static':
    control = <output id={id} class="rd-field-static" aria-labelledby={id + '-label'}>{field.value ? field.value(values) : Array.isArray(value) ? value.join(', ') : value || '—'}</output>;
    break;
+  case 'note':
+   control = <p id={id} class="rd-field-note">{field.value(values)}</p>;
+   break;
   case 'bool':
    control = <input id={id} type="checkbox" checked={!!value} disabled={disabled} onChange={event => onChange(event.currentTarget.checked)} />;
    break;
@@ -88,7 +91,7 @@ export function Field({ field: spec, value, values, onChange, error, disabled })
  }
  return (
   <div class={`rd-field${field.wide ? ' is-wide' : ''}`}>
-   <label class="rd-field-label" id={id + '-label'} for={['static', 'multi'].includes(field.type) ? undefined : id}>{field.label}{field.label && ':'}</label>
+   <label class="rd-field-label" id={id + '-label'} for={['static', 'multi', 'note'].includes(field.type) ? undefined : id}>{field.label}{field.label && ':'}</label>
    <div class="rd-field-control">
     {control}
     {error && <div class="rd-field-error" id={id + '-error'}>{error}</div>}

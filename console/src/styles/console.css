@@ -182,6 +182,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-field-control [aria-invalid="true"] { border-color: var(--rd-red) !important; }
 .rd-field-control :disabled { background: var(--rd-window) !important; color: var(--rd-muted); }
 .rd-field-static { display: block; padding-top: 3px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.rd-field-note { margin: 0; padding-top: 3px; color: var(--rd-muted); line-height: 1.4; }
 .rd-field.is-wide .rd-field-static { font-family: var(--rd-mono); }
 .rd-field-error { margin-top: 2px; color: var(--rd-red); }
 .rd-field-negatable { display: flex; gap: 4px; max-width: 300px; }

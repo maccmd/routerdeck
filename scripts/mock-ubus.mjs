@@ -48,7 +48,8 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
    }
   },
   system: {
-   board: () => [0, board],
+   // The host name follows the simulated system configuration, as on a router.
+   board: (args, sid) => [0, { ...board, hostname: Object.values(routerOf(sid)?.uci('system') ?? {}).find(section => section['.type'] === 'system')?.hostname ?? board.hostname }],
    info: () => [0, systemInfo()]
   },
   routerdeck: {

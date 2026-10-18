@@ -2,6 +2,7 @@
 // Original outline icons on a 24-unit grid, drawn at 16px. No vendor artwork.
 
 const PATHS = {
+ quickset: 'M13 2 4 14h7l-1 8 9-12h-7z',
  interfaces: 'M8 2h8v6H8z M12 8v5 M5 13h14 M5 13v3 M19 13v3 M2 16h6v6H2z M16 16h6v6h-6z',
  ip: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M3 12h18 M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z',
  wireless: 'M2 8a15 15 0 0 1 20 0 M5 12a10 10 0 0 1 14 0 M8.5 15.5a5 5 0 0 1 7 0 M12 19h.01',

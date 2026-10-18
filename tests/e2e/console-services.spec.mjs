@@ -114,3 +114,30 @@ test('PPP clients list PPPoE networks and create new ones', async ({ page }) => 
  await item.getByRole('button', { name: 'OK' }).click();
  await expect(row(ppp, 'me@isp.example')).toContainText('pppoe');
 });
+
+test('Quick Set applies its edits as one change that one Undo reverts', async ({ page }) => {
+ await page.getByRole('menuitem', { name: 'Quick Set', exact: true }).click();
+ const quick = win(page, 'Quick Set');
+ await expect(quick.getByLabel('Address Acquisition:')).toHaveValue('dhcp');
+ await quick.getByRole('tab', { name: 'Local Network' }).click();
+ await expect(quick.getByLabel('DHCP Server Range:')).toHaveValue('192.168.88.100-192.168.88.249');
+ await quick.getByLabel('IP Address:').fill('192.168.88.0/24');
+ await quick.getByRole('button', { name: 'Apply' }).click();
+ await expect(quick.getByText('is the network or broadcast address')).toBeVisible();
+ await quick.getByLabel('IP Address:').fill('192.168.90.1/24');
+ await quick.getByRole('tab', { name: 'WiFi' }).click();
+ await quick.getByLabel('Network Name:').fill('Home');
+ await quick.getByRole('tab', { name: 'System' }).click();
+ await quick.getByLabel('Router Identity:').fill('home-router');
+ await quick.getByRole('button', { name: 'Apply' }).click();
+ await expect(page.getByRole('button', { name: 'Undo' })).toHaveAttribute('title', 'Undo: Quick Set: LAN 192.168.90.1/24, WiFi Home, identity home-router');
+ await expect(page.getByRole('toolbar', { name: 'Session' })).toContainText('Continue at http://192.168.90.1/routerdeck/');
+ await expect(page).toHaveTitle(/\(home-router\)/, { timeout: 5000 });
+ await page.getByRole('menuitem', { name: 'WiFi', exact: true }).click();
+ await expect(row(win(page, 'WiFi'), 'phy0-ap0')).toContainText('Home');
+ await page.getByRole('button', { name: 'Undo' }).click();
+ await expect(row(win(page, 'WiFi'), 'phy0-ap0')).toContainText('RD-Test');
+ await win(page, 'WiFi').getByRole('button', { name: 'Close WiFi' }).click();
+ await win(page, 'Quick Set').getByRole('tab', { name: 'Local Network' }).click();
+ await expect(win(page, 'Quick Set').getByLabel('IP Address:')).toHaveValue('192.168.88.1/24');
+});

@@ -3,6 +3,7 @@
 // whose `requires` capability is missing are hidden rather than greyed out.
 
 export const MENU = [
+ { id: 'quick-set', label: 'Quick Set', icon: 'quickset', window: 'quick-set' },
  { id: 'wifi', label: 'WiFi', icon: 'wireless', window: 'wifi', requires: 'wireless' },
  { id: 'interfaces', label: 'Interfaces', icon: 'interfaces', window: 'interfaces' },
  { id: 'bridge', label: 'Bridge', icon: 'bridge', window: 'bridge' },

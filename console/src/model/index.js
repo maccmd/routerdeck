@@ -12,5 +12,6 @@ import { servers, leases, bindings6 } from './dhcp.js';
 import { dnsSettings, dnsStatic } from './dns.js';
 import { wifiInterfaces, wifiRadios, wifiRegistration } from './wireless.js';
 import { pppClients } from './ppp.js';
+import { quickSet } from './quickset.js';
 
-export const MODELS = Object.fromEntries([interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, log].map(model => [model.id, model]));
+export const MODELS = Object.fromEntries([interfaces, networks, addresses, routes, addresses6, routes6, bridges, bridgePorts, bridgeVlans, filterRules, natRules, connections, zones, servers, leases, bindings6, dnsSettings, dnsStatic, wifiInterfaces, wifiRadios, wifiRegistration, pppClients, quickSet, log].map(model => [model.id, model]));

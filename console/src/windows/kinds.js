@@ -3,6 +3,7 @@
 // object; terminals may be opened several times.
 
 export const WINDOW_KINDS = {
+ 'quick-set': { title: 'Quick Set', size: { w: 600, h: 400 }, tabs: [{ label: 'Quick Set', model: 'quick-set' }] },
  interfaces: { title: 'Interface List', size: { w: 840, h: 380 }, tabs: [{ label: 'Interface', model: 'interfaces' }, { label: 'Networks', model: 'networks' }] },
  'ip-addresses': { title: 'Address List', size: { w: 500, h: 300 }, tabs: [{ label: 'Addresses', model: 'addresses' }] },
  'ip-routes': { title: 'Route List', size: { w: 760, h: 340 }, tabs: [{ label: 'Routes', model: 'routes' }] },

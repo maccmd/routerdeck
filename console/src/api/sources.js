@@ -49,6 +49,7 @@ export const SOURCES = {
  'uci:network': [uci('network'), 5000],
  'uci:firewall': [uci('firewall'), 5000],
  'uci:dhcp': [uci('dhcp'), 5000],
+ 'uci:system': [uci('system'), 5000],
  'uci:wireless': [() => client.call('uci', 'get', { config: 'wireless' }).then(reply => reply?.values ?? {}, () => ({})), 5000],
  // netifd's network.wireless rejects uhttpd's session argument; luci-rpc wraps it.
  wireless: [() => client.call('luci-rpc', 'getWirelessDevices').then(reply => reply ?? {}, () => ({})), 3000],

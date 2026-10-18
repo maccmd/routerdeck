@@ -2,7 +2,7 @@
 // Changes go through the routerdeck plugin: one call applies, validates,
 // reloads services and records the change for Undo.
 import { signal } from '@preact/signals';
-import { client } from '../state.js';
+import { client, board } from '../state.js';
 import { poller } from './sources.js';
 
 export const notice = signal(null);
@@ -35,6 +35,9 @@ export async function apply(change) {
  const result = await client.call('routerdeck', 'apply', { description: change.description, ops: change.ops });
  if (!result?.ok) throw new ActionError(result);
  refreshAfterChange();
+ // The identity in the title follows a new host name once it is set.
+ if (change.ops.some(op => op.config === 'system')) setTimeout(() => client.call('system', 'board').then(identity => { board.value = identity; }, () => {}), 2000);
+ if (change.notice) notify(change.notice, 'warning');
  if (result.safemode_released) notify('Safe Mode ended after 100 changes; the changes were kept', 'warning');
  return result;
 }
