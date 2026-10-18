@@ -46,8 +46,8 @@ const TREE = {
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
  ppp: { children: { secret: { model: 'ppp-secrets' }, 'pppoe-server': { model: 'ppp-servers' } } },
- routing: { children: { rule: { model: 'routing-rules' } } },
- queue: { children: { sqm: { model: 'sqm-queues' } } },
+ routing: { children: { rule: { model: 'routing-rules' }, table: { model: 'routing-tables' } } },
+ queue: { children: { simple: { model: 'simple-queues' }, sqm: { model: 'sqm-queues' } } },
  log: { model: 'log' },
  system: { commands: ['reboot', 'reset-configuration'], children: {
   identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },
@@ -55,7 +55,7 @@ const TREE = {
   script: { model: 'system-scripts', children: { job: { model: 'system-script-jobs' } } },
   startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }, leds: { model: 'system-leds' }
  } },
- tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' } } },
+ tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' }, graphing: { model: 'graphing-settings' } } },
  user: { model: 'users' },
  certificate: { model: 'certificates', children: { trusted: { model: 'certificates-trusted' } } },
  disk: { model: 'disks', children: { mount: { model: 'disk-mounts' }, swap: { model: 'disk-swap' }, settings: { model: 'disk-settings' } } }

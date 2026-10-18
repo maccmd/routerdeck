@@ -11,7 +11,7 @@
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "certificates", "conntrack", "crontab", "ddns", "diag", "disks", "files", "fw_counters", "history", "info", "ipsec", "leds", "log", "neighbors", "netwatch", "openvpn", "packages", "qdisc", "routes", "rules", "sysctl", "terminal", "trusted", "upnp", "wireguard" ],
+				"routerdeck": [ "certificates", "conntrack", "crontab", "ddns", "diag", "disks", "files", "fw_counters", "graphs", "history", "info", "ipsec", "leds", "log", "neighbors", "netwatch", "openvpn", "packages", "qdisc", "queues", "routes", "rules", "sysctl", "tables", "terminal", "trusted", "upnp", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]

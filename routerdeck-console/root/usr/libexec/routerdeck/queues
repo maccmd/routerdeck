@@ -1,0 +1,135 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Simple Queues: per-address rate limits as HTB classes. Download is shaped
+// on the LAN device's egress (matching the client as destination); upload on
+// an ifb device that receives the LAN device's ingress (matching the client
+// as source). Unlisted traffic goes to a class without a limit. Runs after
+// every change to /etc/config/routerdeck and when an interface comes up;
+// "clear" removes everything it set up.
+'use strict';
+
+import { readfile, writefile, unlink, popen } from 'fs';
+import { cursor } from 'uci';
+import { connect } from 'ubus';
+
+const STATE = '/var/run/routerdeck/queues.json';
+const DEVICES = '/var/run/routerdeck/queues.devices';
+const RATE = /^([0-9]+(\.[0-9]+)?)([kKmMgG]?)$/;
+const ADDRESS4 = /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?$/;
+const ADDRESS6 = /^[0-9a-fA-F:]+(\/[0-9]{1,3})?$/;
+
+function sh(command) {
+	let pipe = popen(command + ' 2>&1', 'r');
+	let output = pipe?.read('all') ?? '';
+	pipe?.close();
+	return output;
+}
+
+// 10M, 512k or 2.5M as tc's bits per second.
+function tc_rate(text) {
+	let parts = match(text ?? '', RATE);
+	if (!parts)
+		return null;
+	return sprintf('%dbit', int(+parts[1] * ({ '': 1, k: 1e3, K: 1e3, m: 1e6, M: 1e6, g: 1e9, G: 1e9 }[parts[3]])));
+}
+
+const ifb_of = device => 'rdq-' + substr(device, 0, 11);
+
+function clear(device, ifb) {
+	sh(sprintf("tc qdisc del dev '%s' root", device));
+	sh(sprintf("tc qdisc del dev '%s' ingress", device));
+	sh(sprintf("ip link del '%s'", ifb));
+}
+
+function device_of(bus, network) {
+	let status = bus?.call('network.interface.' + network, 'status', {});
+	return status?.l3_device ?? status?.device;
+}
+
+let previous = {};
+try { previous = json(readfile(STATE) ?? '{}'); } catch (e) { previous = {}; }
+if (type(previous) != 'object')
+	previous = {};
+
+let wanted = {};
+if (ARGV[0] != 'clear') {
+	let ctx = cursor(), bus = connect();
+	ctx.load('routerdeck');
+	ctx.foreach('routerdeck', 'queue', section => {
+		if (section.disabled == '1')
+			return;
+		let device = device_of(bus, section.interface ?? 'lan');
+		if (!device || !match(device, /^[A-Za-z0-9_.@-]{1,15}$/))
+			return;
+		let targets = filter(type(section.target) == 'array' ? section.target : [ section.target ], target => type(target) == 'string' && (match(target, ADDRESS4) || match(target, ADDRESS6)));
+		if (!length(targets))
+			return;
+		push(wanted[device] ??= [], {
+			name: section['.name'], targets, up: tc_rate(section.max_up), down: tc_rate(section.max_down),
+			up_at: tc_rate(section.limit_at_up), down_at: tc_rate(section.limit_at_down), priority: min(max(int(section.priority ?? 8), 1), 8)
+		});
+	});
+	bus?.disconnect();
+}
+
+// Devices no longer shaped are cleared first.
+for (let device, state in previous.devices ?? {})
+	if (!wanted[device])
+		clear(device, state.ifb);
+
+function shape(device, queues, direction) {
+	let commands = [
+		sprintf("tc qdisc add dev '%s' root handle 1: htb default ffff", device),
+		// A fixed quantum keeps HTB from guessing one from the rate.
+		sprintf("tc class add dev '%s' parent 1: classid 1:1 htb rate 10gbit quantum 1514", device),
+		sprintf("tc class add dev '%s' parent 1:1 classid 1:ffff htb rate 1mbit ceil 10gbit prio 7 quantum 1514", device),
+		sprintf("tc qdisc add dev '%s' parent 1:ffff fq_codel", device)
+	];
+	let classes = {};
+	for (let n, queue in queues) {
+		let ceil = direction == 'down' ? queue.down : queue.up;
+		if (!ceil)
+			continue;
+		let id = sprintf('%x', 16 + n);
+		let rate = (direction == 'down' ? queue.down_at : queue.up_at) ?? '8kbit';
+		classes[queue.name] = '1:' + id;
+		push(commands,
+			sprintf("tc class add dev '%s' parent 1:1 classid 1:%s htb rate %s ceil %s prio %d quantum 1514", device, id, rate, ceil, queue.priority - 1),
+			sprintf("tc qdisc add dev '%s' parent 1:%s fq_codel", device, id));
+		for (let target in queue.targets) {
+			let v6 = index(target, ':') >= 0;
+			push(commands, sprintf("tc filter add dev '%s' parent 1: protocol %s prio %d u32 match %s %s %s flowid 1:%s",
+				device, v6 ? 'ipv6' : 'ip', v6 ? 2 : 1, v6 ? 'ip6' : 'ip', direction == 'down' ? 'dst' : 'src', target, id));
+		}
+	}
+	let errors = [];
+	for (let command in commands) {
+		let output = trim(sh(command));
+		if (output != '')
+			push(errors, command + ': ' + output);
+	}
+	return { classes, errors };
+}
+
+let state = { devices: {} };
+for (let device, queues in wanted) {
+	let ifb = ifb_of(device);
+	clear(device, ifb);
+	let down = shape(device, queues, 'down');
+	sh(sprintf("ip link add '%s' type ifb; ip link set '%s' up", ifb, ifb));
+	sh(sprintf("tc qdisc add dev '%s' handle ffff: ingress", device));
+	sh(sprintf("tc filter add dev '%s' parent ffff: protocol all prio 10 matchall action mirred egress redirect dev '%s'", device, ifb));
+	let up = shape(ifb, queues, 'up');
+	state.devices[device] = { ifb, down: down.classes, up: up.classes, errors: [ ...down.errors, ...up.errors ] };
+	for (let error in state.devices[device].errors)
+		system([ '/usr/bin/logger', '-t', 'routerdeck', '-p', 'daemon.warning', 'Simple Queues: ' + error ]);
+}
+
+if (length(keys(state.devices))) {
+	writefile(STATE, sprintf('%J', state));
+	writefile(DEVICES, join('\n', map(keys(state.devices), device => device + ' ' + state.devices[device].ifb)) + '\n');
+}
+else {
+	unlink(STATE);
+	unlink(DEVICES);
+}

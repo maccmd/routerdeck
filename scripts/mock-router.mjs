@@ -10,9 +10,9 @@ const capturedCerts = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl', 'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl', 'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options', 'rt_tables'];
 // Configurations kept as whole texts rather than UCI sections.
-const FILES = ['crontab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options'];
+const FILES = ['crontab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options', 'rt_tables'];
 // Kernel defaults of the settings IP > Settings shows, as on OpenWrt 25.12.5.
 const SYSCTL_DEFAULTS = {
  'net.ipv4.ip_forward': '1', 'net.ipv6.conf.all.forwarding': '1', 'net.ipv4.conf.all.rp_filter': '0', 'net.ipv4.conf.default.rp_filter': '0', 'net.ipv4.conf.all.accept_redirects': '1',
@@ -88,9 +88,12 @@ function initialConfigs() {
   branch: section('remote', 'branch', 1, { enabled: '1', gateway: '198.51.100.30', authentication_method: 'psk', pre_shared_key: 'not-a-real-secret', crypto_proposal: ['aes256_sha256'], tunnel: ['branch_lan'] }),
   branch_lan: section('tunnel', 'branch_lan', 2, { local_subnet: ['192.168.88.0/24'], remote_subnet: ['192.168.50.0/24'], crypto_proposal: ['aes256_sha256'], startaction: 'start' })
  };
+ const rtTables = '#\n# reserved values\n#\n128\tprelocal\n255\tlocal\n254\tmain\n253\tdefault\n0\tunspec\n#\n# local\n#\n100\tisp2\n';
+ routerdeck.graphing = section('graphing', 'graphing', 6, { enabled: '1' });
+ routerdeck.laptop = section('queue', 'laptop', 5, { target: ['192.168.88.120'], max_up: '5M', max_down: '20M', comment: 'Homework only' });
  const chapSecrets = '#USERNAME  PROVIDER  PASSWORD  IPADDRESS\nalice * wonderland *\n';
  const sysctl = '# User defined entries should be added to this file not to /etc/sysctl.d/* as\n# that directory is not backed-up by default and will not survive a reimage\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab, sysctl, pppoe, openvpn, ipsec, 'chap-secrets': chapSecrets, 'pap-secrets': chapSecrets, 'pppoe-options': '' };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab, sysctl, pppoe, openvpn, ipsec, 'chap-secrets': chapSecrets, 'pap-secrets': chapSecrets, 'pppoe-options': '', rt_tables: rtTables };
 }
 
 const CLIENTS = [
@@ -856,6 +859,28 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   wol: ({ mac }) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac ?? '') ? { ok: true } : { ok: false, error: 'invalid', message: 'Enter a MAC address such as 00:11:22:33:44:55' },
   packages: () => { settle(); return { manager: 'apk', packages: clone(packageList), upgradable: { ...upgradable } }; },
   task, files, fileRemove, fileMkdir, writeFile, readFile, restore, firmware, users, certificate, leds, disks, unmount,
+  tables: () => ({ text: configs.rt_tables, path: '/etc/iproute2/rt_tables' }),
+  // A day of history, as if graphing had run since the router started.
+  graphs: ({ name } = {}) => {
+   const enabled = configs.routerdeck.graphing?.enabled === '1', end = Math.floor(now() / 1000);
+   const names = enabled ? ['cpu', 'interface:br-lan', 'interface:eth0', 'memory'] : [];
+   if (!enabled || !names.includes(name)) return { running: enabled, now: end, names, series: null };
+   const steps = { day: [300, 288], week: [1800, 336], month: [7200, 360], year: [86400, 365] }, series = {};
+   for (const [period, [step, keep]] of Object.entries(steps)) {
+    const last = end - end % step, count = Math.min(keep, period === 'year' ? 12 : keep);
+    series[period] = Array.from({ length: count }, (unused, index) => {
+     const t = last - (count - 1 - index) * step, wave = (Math.sin(t / 7200) + 1) / 2;
+     return name === 'cpu' ? [t, 5 + wave * 30] : name === 'memory' ? [t, 28 + wave * 4] : name === 'interface:eth0' ? [t, 2e6 + wave * 18e6, 4e5 + wave * 2e6] : [t, 3e5 + wave * 2e6, 1.5e6 + wave * 15e6];
+    });
+   }
+   return { running: true, now: end, names, series };
+  },
+  // Enabled queues count traffic as if the clients were busy.
+  queues: () => {
+   const t = Math.floor(seconds() * 1000) / 1000, queues = {};
+   for (const item of sectionsOf('routerdeck', 'queue').filter(entry => entry.disabled !== '1')) queues[item['.name']] = { up: [Math.floor(400000 + t * 60000), Math.floor(800 + t * 90)], down: [Math.floor(9000000 + t * 900000), Math.floor(7000 + t * 700)] };
+   return { installed: true, now: Math.floor(now() / 1000), devices: Object.keys(queues).length ? { 'br-lan': { ifb: 'rdq-br-lan', queues, errors: [] } } : {} };
+  },
   pppfiles: () => ({ chap: configs['chap-secrets'], pap: configs['pap-secrets'], options: configs['pppoe-options'], server: true }),
   openvpn: () => ({ installed: true, instances: Object.fromEntries(sectionsOf('openvpn', 'openvpn').filter(item => item.enabled === '1').map(item => [item['.name'], { running: true }])) }),
   ipsec: () => ({ installed: true, legacy: false, sas: sectionsOf('ipsec', 'remote').filter(item => item.enabled === '1').map((item, index) => ({

@@ -919,6 +919,59 @@ function ipsec_status() {
 	return { installed: true, legacy, sas };
 }
 
+/* --- Routing tables and Simple Queues ------------------------------------- */
+
+function tables() {
+	return { text: config_text('rt_tables'), path: FILES.rt_tables };
+}
+
+// Byte and packet counters of the HTB classes the queues script made.
+function queues() {
+	let state = read_json(RUN + '/queues.json', { devices: {} });
+	let result = { installed: executable('/sbin/tc'), now: time(), devices: {} };
+	for (let device, setup in state.devices ?? {}) {
+		let counters = {};
+		for (let dev in [ device, setup.ifb ]) {
+			let current = null;
+			for (let line in split(run(sprintf("tc -s class show dev '%s'", dev)).output, '\n')) {
+				let head = match(line, /^class htb ([0-9a-f]+:[0-9a-f]+) /);
+				if (head) {
+					current = dev + '|' + head[1];
+					continue;
+				}
+				let sent = current && match(line, /^ Sent ([0-9]+) bytes ([0-9]+) pkt/);
+				if (sent)
+					counters[current] = [ int(sent[1]), int(sent[2]) ];
+			}
+		}
+		let queues = {};
+		for (let name in uniq([ ...keys(setup.down ?? {}), ...keys(setup.up ?? {}) ]))
+			queues[name] = { down: counters[device + '|' + setup.down?.[name]], up: counters[setup.ifb + '|' + setup.up?.[name]] };
+		result.devices[device] = { ifb: setup.ifb, queues, errors: setup.errors ?? [] };
+	}
+	return result;
+}
+
+/* --- Graphing ------------------------------------------------------------- */
+
+// The graphing service's history: the names it keeps and, for one name, the
+// points of each period with the bucket being filled as the last point.
+function graphs(args) {
+	let state = read_json(RUN + '/graphs.json', null);
+	let result = { running: state != null && time() - (state.now ?? 0) < 60, now: state?.now, names: sort(keys(state?.series ?? {})), series: null };
+	let wanted = type(args.name) == 'string' ? state?.series?.[args.name] : null;
+	if (wanted) {
+		result.series = {};
+		for (let period, line in wanted) {
+			let points = [ ...(line.points ?? []) ];
+			if (line.bucket?.count)
+				push(points, [ line.bucket.start, ...map(line.bucket.sums, sum => sum / line.bucket.count) ]);
+			result.series[period] = points;
+		}
+	}
+	return result;
+}
+
 /* --- Kernel settings ------------------------------------------------------ */
 
 // Current values of the settings IP > Settings shows, and the file that
@@ -1676,6 +1729,16 @@ return {
 		},
 		pppfiles: {
 			call: () => pppfiles()
+		},
+		tables: {
+			call: () => tables()
+		},
+		graphs: {
+			args: { name: 'name' },
+			call: request => graphs(request.args)
+		},
+		queues: {
+			call: () => queues()
 		},
 		openvpn: {
 			call: () => openvpn_status()

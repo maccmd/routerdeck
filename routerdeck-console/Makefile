@@ -38,6 +38,10 @@ define Package/routerdeck-console/install
 	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-netwatch $(1)/etc/init.d/routerdeck-netwatch
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/netwatch $(1)/usr/libexec/routerdeck/netwatch
 	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/run-script $(1)/usr/libexec/routerdeck/run-script
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/queues $(1)/usr/libexec/routerdeck/queues
+	$(INSTALL_BIN) ./root/etc/init.d/routerdeck-graphing $(1)/etc/init.d/routerdeck-graphing
+	$(INSTALL_BIN) ./root/usr/libexec/routerdeck/graphing $(1)/usr/libexec/routerdeck/graphing
+	$(INSTALL_BIN) ./root/etc/hotplug.d/iface/90-routerdeck-queues $(1)/etc/hotplug.d/iface/90-routerdeck-queues
 endef
 
 define Package/routerdeck-console/conffiles
@@ -51,10 +55,18 @@ define Package/routerdeck-console/postinst
 exit 0
 endef
 
-# The default prerm stops the Safe Mode watchdog; drop its runtime state too.
+# The default prerm stops the Safe Mode watchdog; drop its runtime state and
+# the Simple Queues set up on devices too.
 define Package/routerdeck-console/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
+	if [ -f /var/run/routerdeck/queues.devices ]; then
+		while read -r device ifb; do
+			tc qdisc del dev "$$device" root 2>/dev/null
+			tc qdisc del dev "$$device" ingress 2>/dev/null
+			ip link del "$$ifb" 2>/dev/null
+		done < /var/run/routerdeck/queues.devices
+	fi
 	rm -rf /var/run/routerdeck
 	/etc/init.d/rpcd reload
 }

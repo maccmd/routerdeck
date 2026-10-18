@@ -24,7 +24,7 @@ export class ActionError extends Error {
  }
 }
 
-const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch', 'packages', 'jobs', 'users', 'certificates', 'leds', 'disks', 'sysctl', 'pppfiles', 'openvpn', 'ipsec'];
+const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch', 'packages', 'jobs', 'users', 'certificates', 'leds', 'disks', 'sysctl', 'pppfiles', 'openvpn', 'ipsec', 'tables', 'queuestats'];
 const affected = key => key.startsWith('uci:') || AFFECTED.includes(key);
 
 // Services reload about a second after a commit; look again once they have.

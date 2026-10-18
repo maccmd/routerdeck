@@ -10,7 +10,7 @@ import { createJob } from '../api/diag.js';
 import { useSources } from '../api/sources.js';
 import { errorText } from '../api/actions.js';
 import { focusAfterClose, focusWindow } from '../mdi/focus.js';
-import { HOST, ms, pingView, traceView, flowSample, routeIndex, localAddresses, torchDevices, torchView, bandwidthView, scanView } from '../model/tools.js';
+import { HOST, ms, pingView, traceView, flowSample, routeIndex, localAddresses, torchDevices, torchView, bandwidthView, scanView, GRAPH_PERIODS, graphSources, graphPoints } from '../model/tools.js';
 import { TrafficGraph } from '../shell/graph.jsx';
 import { bitrate, rate } from '../lib/format.js';
 
@@ -377,6 +377,47 @@ export function GraphsWindow({ active }) {
     </section>
    ))}
    <p class="rd-graphs-note">Rates are sampled every second while a window needs them; the last five minutes are kept in this browser.</p>
+  </div>
+ );
+}
+
+// The router's own history: pick an interface, CPU or memory on the left;
+// the four periods are drawn on the right.
+export function GraphingWindow({ active }) {
+ const [state, setState] = useState({ names: [], running: false, series: null, now: null });
+ const [selected, setSelected] = useState(null);
+ const [error, setError] = useState(null);
+ const sources = useMemo(() => graphSources(state.names), [state.names]);
+ const current = sources.find(item => item.name === selected) ?? sources.find(item => item.name.startsWith('interface:br-lan')) ?? sources[0];
+ useEffect(() => {
+  if (!active) return undefined;
+  let stopped = false;
+  const load = () => client.call('routerdeck', 'graphs', { name: current?.name ?? '' }).then(reply => { if (!stopped) { setState(reply ?? {}); setError(null); } }, failure => { if (!stopped) setError(errorText(failure)); });
+  load();
+  const timer = setInterval(load, 30000);
+  return () => { stopped = true; clearInterval(timer); };
+ }, [active, current?.name]);
+ const percent = value => Number.isFinite(value) ? `${value.toFixed(value < 10 ? 1 : 0)} %` : '';
+ return (
+  <div class="rd-graphing">
+   <div class="rd-graphing-list" role="listbox" aria-label="Graphs">
+    {sources.map(item => (
+     <button type="button" role="option" key={item.name} aria-selected={item.name === current?.name ? 'true' : 'false'} class="rd-graphing-item" onClick={() => setSelected(item.name)}>{item.label}</button>
+    ))}
+    <button type="button" class="rd-tool-text rd-graphing-settings" onClick={() => focusWindow(manager.open('tool-graphing-settings'))}>Settings…</button>
+   </div>
+   <div class="rd-graphing-main">
+    {error && <p class="rd-diag-error">{error}</p>}
+    {!state.running && !error && <p class="rd-muted">Graphing is off or has not sampled yet. Turn it on in Settings; the first points appear within a minute.</p>}
+    {current && GRAPH_PERIODS.map(period => (
+     <section key={period.id} class="rd-graphs-item" aria-label={`${current.label} ${period.id}`}>
+      <h3>{period.label}</h3>
+      {current.kind === 'traffic'
+       ? <TrafficGraph points={graphPoints(state.series?.[period.id], 'traffic')} seconds={period.seconds} end={(state.now ?? 0) * 1000} height={80} label={`${current.label} ${period.id}`} />
+       : <TrafficGraph points={graphPoints(state.series?.[period.id], 'percent')} seconds={period.seconds} end={(state.now ?? 0) * 1000} height={80} max={100} format={percent} label={`${current.label} ${period.id}`} lines={[{ key: 'value', label: current.label, tone: current.name === 'cpu' ? 'tx' : 'rx' }]} />}
+     </section>
+    ))}
+   </div>
   </div>
  );
 }

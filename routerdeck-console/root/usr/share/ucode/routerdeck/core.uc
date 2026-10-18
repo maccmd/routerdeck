@@ -19,11 +19,12 @@ export const DIAG = RUN + '/diag';
 // files in /etc/config; FILES names the others, edited as whole texts.
 export const FILES = {
 	crontab: '/etc/crontabs/root', sysctl: '/etc/sysctl.conf',
-	'chap-secrets': '/etc/ppp/chap-secrets', 'pap-secrets': '/etc/ppp/pap-secrets', 'pppoe-options': '/etc/ppp/pppoe-server-routerdeck'
+	'chap-secrets': '/etc/ppp/chap-secrets', 'pap-secrets': '/etc/ppp/pap-secrets', 'pppoe-options': '/etc/ppp/pppoe-server-routerdeck',
+	rt_tables: '/etc/iproute2/rt_tables'
 };
 export const CONFIGS = [
 	'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab', 'sysctl',
-	'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options'
+	'pppoe', 'openvpn', 'ipsec', 'chap-secrets', 'pap-secrets', 'pppoe-options', 'rt_tables'
 ];
 // Files only root may read.
 const PRIVATE = [ 'chap-secrets', 'pap-secrets' ];
@@ -115,15 +116,16 @@ export function announce(names) {
 		// rpcd reads logins at every login; block-mount and sysctl are
 		// handled by sync_mounts and sync_sysctl. None needs a reload.
 		// pppd reads its secrets and options at every session.
-		if (name in [ 'rpcd', 'fstab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options' ])
+		if (name in [ 'rpcd', 'fstab', 'sysctl', 'chap-secrets', 'pap-secrets', 'pppoe-options', 'rt_tables' ])
 			continue;
 		// crond has no configuration trigger; it reads its tables at start.
 		if (name == 'crontab')
 			system('/etc/init.d/cron restart >/dev/null 2>&1');
 		// Netwatch runs only with hosts to watch, so it may not be registered
 		// with procd yet; it is enabled and restarted directly.
+		// Simple Queues are set up again from the configuration.
 		else if (name == 'routerdeck')
-			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1');
+			system('/etc/init.d/routerdeck-netwatch enable; /etc/init.d/routerdeck-netwatch restart >/dev/null 2>&1; /etc/init.d/routerdeck-graphing enable; /etc/init.d/routerdeck-graphing restart >/dev/null 2>&1; /usr/libexec/routerdeck/queues >/dev/null 2>&1');
 		else {
 			bus.call('service', 'event', { type: 'config.change', data: { package: name } });
 			start_unregistered(bus, name);

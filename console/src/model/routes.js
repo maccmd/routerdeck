@@ -3,6 +3,7 @@
 // `route6` sections. A static route present in the kernel is active (A);
 // kernel-only routes are dynamic.
 import { sections, truthy, invalid, networkOptions, compact } from './common.js';
+import { tableNames } from './routing.js';
 import { parseCidr, parseCidr6, maskToPrefix, isIPv4, canonicalIPv6, addressKey } from '../lib/ip.js';
 
 const TYPES = ['unicast', 'blackhole', 'unreachable', 'prohibit', 'throw'];
@@ -40,7 +41,7 @@ export function createRoutesModel(family) {
  return {
   id: f.id,
   noun: f.noun,
-  sources: ['uci:network', f.source, 'ifaces'],
+  sources: ['uci:network', f.source, 'ifaces', 'tables'],
   columns: [
    { id: 'flags', label: '', width: 40 },
    { id: 'dst', label: 'Dst. Address', width: family === 6 ? 200 : 140, sort: addressKey },
@@ -116,7 +117,7 @@ export function createRoutesModel(family) {
     { id: 'gateway', label: 'Gateway', type: 'text', placeholder: f.example.gateway },
     { id: 'interface', label: 'Interface', type: 'select', required: true, options: networkOptions(data['uci:network']) },
     { id: 'distance', label: 'Distance', type: 'number', placeholder: family === 6 ? '1024' : '0' },
-    { id: 'table', label: 'Routing Table', type: 'text', placeholder: 'main' },
+    { id: 'table', label: 'Routing Table', type: 'combo', placeholder: 'main', options: ['main', ...tableNames(data)].map(value => ({ value, label: value })) },
     { id: 'type', label: 'Type', type: 'select', options: TYPES.map(value => ({ value, label: value })) },
     { id: 'prefsrc', label: f.sourceLabel, type: 'text' }
    ];
@@ -136,7 +137,7 @@ export function createRoutesModel(family) {
    if (!values.interface) invalid('interface', 'Choose the network this route uses');
    if (values.distance && !/^\d+$/.test(values.distance)) invalid('distance', 'Distance is a whole number');
    if (values.prefsrc && !(family === 6 ? parseCidr6(values.prefsrc) : isIPv4(values.prefsrc))) invalid('prefsrc', family === 6 ? 'Enter a source prefix such as 2001:db8::/48' : 'Enter an IPv4 source address');
-   if (values.table && !/^[A-Za-z0-9_]+$/.test(values.table)) invalid('table', 'Use a table number or name');
+   if (values.table && !/^[A-Za-z0-9_.-]+$/.test(values.table)) invalid('table', 'Use a table number or name');
    const options = compact({
     target: dst.cidr, gateway: values.gateway ? f.address(values.gateway) : '', interface: values.interface, metric: values.distance,
     table: values.table === 'main' ? '' : values.table, type: values.type === 'unicast' ? '' : values.type, source: values.prefsrc

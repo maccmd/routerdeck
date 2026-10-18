@@ -48,7 +48,8 @@ export const WINDOW_KINDS = {
  'ip-services': { title: 'IP Service List', size: { w: 660, h: 260 }, tabs: [{ label: 'Services', model: 'ip-services' }] },
  'ip-upnp': { title: 'UPnP', size: { w: 760, h: 380 }, tabs: [{ label: 'Settings', model: 'upnp-settings' }, { label: 'Mappings', model: 'upnp-mappings' }, { label: 'Rules', model: 'upnp-rules' }] },
  'ip-ddns': { title: 'Dynamic DNS', size: { w: 900, h: 320 }, tabs: [{ label: 'Services', model: 'ddns-services' }] },
- queues: { title: 'Queues', size: { w: 860, h: 300 }, tabs: [{ label: 'SQM', model: 'sqm-queues' }] },
+ queues: { title: 'Queues', size: { w: 900, h: 300 }, tabs: [{ label: 'Simple Queues', model: 'simple-queues' }, { label: 'SQM', model: 'sqm-queues' }] },
+ 'routing-tables': { title: 'Routing Tables', size: { w: 560, h: 280 }, tabs: [{ label: 'Tables', model: 'routing-tables' }] },
  log: { title: 'Log', size: { w: 860, h: 420 }, tabs: [{ label: 'Log', model: 'log' }] },
  'tool-ping': { title: 'Ping', size: { w: 700, h: 420 }, multi: true, body: 'ping' },
  'tool-traceroute': { title: 'Traceroute', size: { w: 880, h: 440 }, multi: true, body: 'traceroute' },
@@ -56,6 +57,8 @@ export const WINDOW_KINDS = {
  'tool-bandwidth': { title: 'Bandwidth Test', size: { w: 760, h: 520 }, multi: true, body: 'bandwidth' },
  'tool-scan': { title: 'IP Scan', size: { w: 700, h: 440 }, multi: true, body: 'scan' },
  'tool-graphs': { title: 'Graphs', size: { w: 900, h: 560 }, body: 'graphs' },
+ 'tool-graphing': { title: 'Graphing', size: { w: 900, h: 620 }, body: 'graphing' },
+ 'tool-graphing-settings': { title: 'Graphing Settings', size: { w: 520, h: 300 }, tabs: [{ label: 'Settings', model: 'graphing-settings' }] },
  'tool-netwatch': { title: 'Netwatch', size: { w: 700, h: 300 }, tabs: [{ label: 'Netwatch', model: 'netwatch' }] },
  'tool-wol': { title: 'Wake on LAN', size: { w: 520, h: 230 }, tabs: [{ label: 'Wake on LAN', model: 'tool-wol' }] },
  // New Terminal is the RouterOS-style command line; New Shell is ash via ttyd.

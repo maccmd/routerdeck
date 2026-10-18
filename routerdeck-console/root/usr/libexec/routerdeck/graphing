@@ -1,0 +1,127 @@
+#!/usr/bin/ucode
+// SPDX-License-Identifier: Apache-2.0
+// Graphing, as in RouterOS: every ten seconds this samples the byte counters
+// of the chosen interfaces, the CPU's busy time and the memory in use, and
+// keeps averages per 5 minutes for a day, per 30 minutes for a week, per two
+// hours for a month and per day for a year. The data is in RAM
+// (/var/run/routerdeck/graphs.json); with `store` it is also copied to flash
+// once an hour, and read back at the next start.
+'use strict';
+
+import { readfile, writefile, rename, mkdir, lsdir } from 'fs';
+import { cursor } from 'uci';
+
+const STATE = '/var/run/routerdeck/graphs.json';
+const STORED = '/etc/routerdeck/graphs.json';
+const SAMPLE = 10;
+const PERIODS = { day: [ 300, 288 ], week: [ 1800, 336 ], month: [ 7200, 360 ], year: [ 86400, 365 ] };
+
+let ctx = cursor();
+ctx.load('routerdeck');
+let settings = ctx.get_all('routerdeck', 'graphing') ?? {};
+let chosen = type(settings.interfaces) == 'array' ? settings.interfaces : settings.interfaces ? split(settings.interfaces, ' ') : [];
+let store = settings.store == '1';
+let resources = settings.resources != '0';
+
+function load() {
+	for (let path in [ STATE, store ? STORED : null ]) {
+		if (!path)
+			continue;
+		try {
+			let data = json(readfile(path) ?? 'null');
+			if (type(data?.series) == 'object')
+				return data;
+		}
+		catch (e) {}
+	}
+	return { series: {} };
+}
+
+let data = load();
+data.step = SAMPLE;
+
+function devices() {
+	let names = length(chosen) ? chosen : filter(lsdir('/sys/class/net') ?? [], name => name != 'lo' && !match(name, /^(rdq-|ifb|ip6tnl0|gre0|gretap0|erspan0|ip6gre0|sit0|tunl0)/));
+	return filter(names, name => match(name, /^[A-Za-z0-9_.@-]{1,15}$/) && readfile('/sys/class/net/' + name + '/statistics/rx_bytes') != null);
+}
+
+function counter(name, which) {
+	return +trim(readfile('/sys/class/net/' + name + '/statistics/' + which) ?? '0');
+}
+
+function cpu_times() {
+	let line = match(readfile('/proc/stat') ?? '', /^cpu +([0-9 ]+)/);
+	if (!line)
+		return null;
+	let fields = map(split(trim(line[1]), / +/), value => +value);
+	let idle = fields[3] + (fields[4] ?? 0), total = 0;
+	for (let value in fields)
+		total += value;
+	return { idle, total };
+}
+
+function memory_used() {
+	let info = readfile('/proc/meminfo') ?? '';
+	let total = match(info, /MemTotal: +([0-9]+)/), available = match(info, /MemAvailable: +([0-9]+)/);
+	return total && available ? 100 * (+total[1] - +available[1]) / +total[1] : null;
+}
+
+// One series keeps, per period, finished points and the bucket being filled.
+function add(name, values, now) {
+	let series = data.series[name] ??= {};
+	for (let period, setting in PERIODS) {
+		let step = setting[0], keep = setting[1];
+		let line = series[period] ??= { points: [], bucket: null };
+		let start = now - now % step;
+		if (line.bucket && line.bucket.start != start) {
+			if (line.bucket.count)
+				push(line.points, [ line.bucket.start, ...map(line.bucket.sums, sum => sum / line.bucket.count) ]);
+			while (length(line.points) > keep)
+				shift(line.points);
+			line.bucket = null;
+		}
+		line.bucket ??= { start, sums: map(values, () => 0), count: 0 };
+		for (let i = 0; i < length(values); i++)
+			line.bucket.sums[i] += values[i];
+		line.bucket.count++;
+	}
+}
+
+function save(path) {
+	mkdir('/var/run/routerdeck', 0700);
+	mkdir('/etc/routerdeck', 0755);
+	writefile(path + '.tmp', sprintf('%J', data));
+	rename(path + '.tmp', path);
+}
+
+let previous = {}, cpu = cpu_times(), last = time(), stored = time();
+for (let name in devices())
+	previous[name] = [ counter(name, 'rx_bytes'), counter(name, 'tx_bytes') ];
+
+while (true) {
+	sleep(SAMPLE * 1000);
+	let now = time(), seconds = max(1, now - last);
+	last = now;
+	for (let name in devices()) {
+		let rx = counter(name, 'rx_bytes'), tx = counter(name, 'tx_bytes'), before = previous[name];
+		previous[name] = [ rx, tx ];
+		// A reset counter (an interface brought down and up) gives no sample.
+		if (before && rx >= before[0] && tx >= before[1])
+			add('interface:' + name, [ (rx - before[0]) * 8 / seconds, (tx - before[1]) * 8 / seconds ], now);
+	}
+	if (resources) {
+		let next = cpu_times();
+		if (cpu && next && next.total > cpu.total)
+			add('cpu', [ 100 * (1 - (next.idle - cpu.idle) / (next.total - cpu.total)) ], now);
+		cpu = next;
+		let used = memory_used();
+		if (used != null)
+			add('memory', [ used ], now);
+	}
+	data.now = now;
+	save(STATE);
+	if (store && now - stored >= 3600) {
+		save(STORED);
+		stored = now;
+	}
+}

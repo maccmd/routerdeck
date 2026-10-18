@@ -338,3 +338,52 @@ export const wakeOnLan = {
   return { description: `Wake ${mac}`, call: ['routerdeck', 'wol', { mac: mac.toLowerCase(), interface: values.interface }], notice: `Magic packet sent to ${mac.toLowerCase()} on ${values.interface}` };
  }
 };
+
+/* --- Graphing ----------------------------------------------------------------- */
+
+// The router keeps averages per period, as RouterOS does.
+export const GRAPH_PERIODS = [
+ { id: 'day', label: 'Daily (5 minute average)', seconds: 86400 },
+ { id: 'week', label: 'Weekly (30 minute average)', seconds: 7 * 86400 },
+ { id: 'month', label: 'Monthly (2 hour average)', seconds: 30 * 86400 },
+ { id: 'year', label: 'Yearly (1 day average)', seconds: 365 * 86400 }
+];
+
+export function graphSources(names = []) {
+ const label = name => name === 'cpu' ? 'CPU' : name === 'memory' ? 'Memory' : name.replace(/^interface:/, '');
+ return names.map(name => ({ name, label: label(name), kind: name.startsWith('interface:') ? 'traffic' : 'percent' }))
+  .sort((a, b) => (a.kind === b.kind ? a.label.localeCompare(b.label) : a.kind === 'percent' ? -1 : 1));
+}
+
+// Points as the graph draws them: rx/tx in bits per second for interfaces,
+// one value in percent for CPU and memory.
+export function graphPoints(series, kind) {
+ return (series ?? []).map(([start, first, second]) => kind === 'traffic' ? { t: start * 1000, rx: first, tx: second } : { t: start * 1000, value: first });
+}
+
+export const graphingSettings = {
+ id: 'graphing-settings',
+ noun: 'Graphing Settings',
+ singleton: true,
+ sources: ['uci:routerdeck', 'devices'],
+ rows: () => [{ key: 'graphing', section: 'graphing' }],
+ itemTitle: () => 'Graphing Settings',
+ itemStatus: () => ['routerdeck-graphing'],
+ fields: data => [
+  { id: 'enabled', label: 'Enabled', type: 'bool' },
+  { id: 'interfaces', label: 'Interfaces', type: 'multi', options: Object.keys(data.devices ?? {}).filter(name => name !== 'lo').sort().map(value => ({ value, label: value })) },
+  { id: 'resources', label: 'CPU and Memory', type: 'bool' },
+  { id: 'store', label: 'Store on Flash', type: 'bool' },
+  { id: 'note', label: '', type: 'note', value: () => 'With no interface chosen, every interface is graphed. The history is kept in RAM; Store on Flash also saves it once an hour, so it survives a reboot, at the cost of a write to flash every hour.' }
+ ],
+ values(row, data) {
+  const section = data['uci:routerdeck']?.graphing ?? {};
+  return { enabled: truthy(section.enabled), interfaces: list(section.interfaces), resources: truthy(section.resources, true), store: truthy(section.store) };
+ },
+ save(values, row, data) {
+  const options = { enabled: values.enabled ? '1' : '0', interfaces: values.interfaces ?? [], resources: values.resources ? null : '0', store: values.store ? '1' : null };
+  return data['uci:routerdeck']?.graphing
+   ? { description: `${values.enabled ? 'Change' : 'Turn off'} graphing`, ops: [{ op: 'set', config: 'routerdeck', section: 'graphing', values: compact(options) }] }
+   : { description: 'Turn on graphing', ops: [{ op: 'add', config: 'routerdeck', type: 'graphing', name: 'graphing', values: Object.fromEntries(Object.entries(compact(options)).filter(([, value]) => value !== null && !(Array.isArray(value) && !value.length))) }] };
+ }
+};

@@ -28,9 +28,10 @@ export const MENU = [
   { id: 'ipv6-routes', label: 'Routes', window: 'ipv6-routes' }
  ] },
  { id: 'routing', label: 'Routing', icon: 'routing', children: [
-  { id: 'routing-rules', label: 'Rules', window: 'routing-rules' }
+  { id: 'routing-rules', label: 'Rules', window: 'routing-rules' },
+  { id: 'routing-tables', label: 'Tables', window: 'routing-tables' }
  ] },
- { id: 'queues', label: 'Queues', icon: 'queues', window: 'queues', requires: 'sqm' },
+ { id: 'queues', label: 'Queues', icon: 'queues', window: 'queues' },
  { id: 'system', label: 'System', icon: 'system', children: [
   { id: 'system-identity', label: 'Identity', window: 'system-identity' },
   { id: 'system-clock', label: 'Clock', window: 'system-clock' },
@@ -61,7 +62,8 @@ export const MENU = [
   { id: 'tool-scan', label: 'IP Scan', window: 'tool-scan' },
   { id: 'tool-netwatch', label: 'Netwatch', window: 'tool-netwatch' },
   { id: 'tool-wol', label: 'Wake on LAN', window: 'tool-wol', requires: 'etherwake' },
-  { id: 'tool-graphs', label: 'Graphs', window: 'tool-graphs' }
+  { id: 'tool-graphs', label: 'Graphs', window: 'tool-graphs' },
+  { id: 'tool-graphing', label: 'Graphing', window: 'tool-graphing' }
  ] },
  { id: 'terminal', label: 'New Terminal', icon: 'terminal', window: 'terminal' },
  { id: 'shell', label: 'New Shell', icon: 'shell', window: 'shell' },

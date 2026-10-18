@@ -35,6 +35,25 @@ async function devices() {
  return reply;
 }
 
+// Simple Queue rates from their class counters, like the device rates.
+let lastQueues = null;
+async function queuestats() {
+ const reply = await client.call('routerdeck', 'queues');
+ const time = performance.now(), rates = {};
+ if (lastQueues) {
+  const seconds = (time - lastQueues.time) / 1000;
+  const rate = (now, before) => Number.isFinite(now?.[0]) && Number.isFinite(before?.[0]) && now[0] >= before[0] && seconds > 0 ? (now[0] - before[0]) * 8 / seconds : null;
+  for (const [device, state] of Object.entries(reply?.devices ?? {})) {
+   for (const [name, queue] of Object.entries(state.queues ?? {})) {
+    const before = lastQueues.reply?.devices?.[device]?.queues?.[name];
+    rates[name] = { up: rate(queue.up, before?.up), down: rate(queue.down, before?.down) };
+   }
+  }
+ }
+ lastQueues = { time, reply };
+ return { ...reply, rates };
+}
+
 // The log is read incrementally by entry id and kept to 1000 lines.
 let logState = { entries: [], after: 0 };
 async function log() {
@@ -80,6 +99,8 @@ export const SOURCES = {
  packages: [() => client.call('routerdeck', 'packages'), 60000],
  jobs: [() => client.call('routerdeck', 'diag', { action: 'list' }).then(reply => reply ?? { jobs: [] }), 2000],
  users: [() => client.call('routerdeck', 'users'), 10000],
+ tables: [() => client.call('routerdeck', 'tables'), 10000],
+ queuestats: [() => queuestats().catch(() => ({ devices: {}, rates: {} })), 2000],
  sysctl: [() => client.call('routerdeck', 'sysctl', { keys: SYSCTL_KEYS }), 10000],
  certificates: [() => client.call('routerdeck', 'certificates'), 30000],
  trusted: [() => client.call('routerdeck', 'trusted'), 600000],
@@ -116,6 +137,7 @@ export const SOURCES = {
 
 export function resetSources() {
  lastDevices = null;
+ lastQueues = null;
  traffic.clear();
  logState = { entries: [], after: 0 };
  poller.reset();

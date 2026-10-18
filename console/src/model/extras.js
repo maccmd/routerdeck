@@ -280,3 +280,93 @@ export const sqmQueues = {
  toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} queue ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'sqm', section: row.section, values: { enabled: enable ? '1' : '0' } })) }),
  comment: (rows, comment) => ({ description: `Comment queue ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'sqm', section: row.section, values: { comment: comment || null } })) })
 };
+
+/* --- Simple Queues --------------------------------------------------------------- */
+
+const LIMIT = /^\d+(\.\d+)?[kKmMgG]?$/;
+const LIMIT_UNITS = { '': 1, k: 1e3, K: 1e3, m: 1e6, M: 1e6, g: 1e9, G: 1e9 };
+export const limitBits = text => { const match = /^(\d+(?:\.\d+)?)([kKmMgG]?)$/.exec(String(text ?? '')); return match ? Number(match[1]) * LIMIT_UNITS[match[2]] : null; };
+
+// Per-address limits shaped by RouterDeck's queues script (HTB on the LAN
+// device for download, on an ifb device for upload), like RouterOS's
+// simple queues: target, max limit and a guaranteed rate.
+export const simpleQueues = {
+ id: 'simple-queues',
+ noun: 'Simple Queue',
+ sources: ['uci:routerdeck', 'uci:network', 'queuestats'],
+ columns: [
+  { id: 'flags', label: '', width: 30 },
+  { id: 'name', label: 'Name', width: 120 },
+  { id: 'target', label: 'Target', width: 170 },
+  { id: 'max', label: 'Max Limit (up/down)', width: 130 },
+  { id: 'rate', label: 'Rate (up/down)', width: 160 },
+  { id: 'bytes', label: 'Bytes (up/down)', width: 150 },
+  { id: 'interface', label: 'Interface', width: 70, hidden: true }
+ ],
+ flagLegend: { X: 'disabled', S: 'shaping on the router' },
+ defaultSort: null,
+ status: data => {
+  const errors = Object.values(data.queuestats?.devices ?? {}).flatMap(device => device.errors ?? []).filter(error => !/Warning:/.test(error));
+  return errors.length ? `tc: ${errors[0]}` : 'HTB on the LAN device and an ifb device; FastPath-offloaded connections are still shaped';
+ },
+ rows: data => sections(data['uci:routerdeck'], 'queue').map(section => {
+  const disabled = truthy(section.disabled), name = section['.name'];
+  const live = Object.values(data.queuestats?.devices ?? {}).map(device => device.queues?.[name]).find(Boolean);
+  const rate = data.queuestats?.rates?.[name];
+  return {
+   key: name, section: name, disabled, comment: section.comment, flags: (disabled ? 'X' : '') + (live ? 'S' : ''),
+   cells: {
+    name, target: list(section.target).join(', '), max: `${section.max_up || '∞'}/${section.max_down || '∞'}`,
+    rate: rate ? `${bitrateText(rate.up)}/${bitrateText(rate.down)}` : '', bytes: live ? `${bytes(live.up?.[0] ?? 0)}/${bytes(live.down?.[0] ?? 0)}` : '', interface: section.interface ?? 'lan'
+   }
+  };
+ }),
+ itemTitle: row => `Simple Queue <${row?.key ?? 'new'}>`,
+ itemStatus: row => [row.disabled ? 'disabled' : row.flags.includes('S') ? 'shaping' : 'not set up'],
+ canAdd: () => true,
+ canRemove: () => true,
+ canToggle: () => true,
+ canComment: () => true,
+ fields: (data, row) => [
+  { id: 'name', label: 'Name', type: row ? 'static' : 'text', placeholder: 'laptop' },
+  { id: 'target', label: 'Target', type: 'list' },
+  { id: 'max_up', label: 'Max Upload', type: 'text', placeholder: '10M (no limit when empty)' },
+  { id: 'max_down', label: 'Max Download', type: 'text', placeholder: '50M' },
+  { id: 'limit_at_up', label: 'Limit At Upload', type: 'text', placeholder: 'guaranteed, such as 1M', tab: 'Advanced' },
+  { id: 'limit_at_down', label: 'Limit At Download', type: 'text', placeholder: '5M', tab: 'Advanced' },
+  { id: 'priority', label: 'Priority', type: 'select', tab: 'Advanced', options: ['1', '2', '3', '4', '5', '6', '7', '8'].map(value => ({ value, label: value === '1' ? '1 (highest)' : value === '8' ? '8 (lowest)' : value })) },
+  { id: 'interface', label: 'LAN Network', type: 'select', tab: 'Advanced', options: networkOptions(data['uci:network'], section => section['.name'] !== 'loopback') }
+ ],
+ values: (row, data) => {
+  const section = data['uci:routerdeck'][row.section] ?? {};
+  return { name: row.key, target: list(section.target), max_up: section.max_up ?? '', max_down: section.max_down ?? '', limit_at_up: section.limit_at_up ?? '', limit_at_down: section.limit_at_down ?? '', priority: section.priority ?? '8', interface: section.interface ?? 'lan' };
+ },
+ defaults: () => ({ name: '', target: [], max_up: '', max_down: '', limit_at_up: '', limit_at_down: '', priority: '8', interface: 'lan' }),
+ save(values, row, data) {
+  const name = row ? row.section : String(values.name ?? '').trim();
+  if (!row) {
+   if (!NAME.test(name)) invalid('name', 'Use letters, digits and _');
+   if (data['uci:routerdeck']?.[name]) invalid('name', `${name} is already used in /etc/config/routerdeck`);
+  }
+  if (!(values.target ?? []).length) invalid('target', 'Enter the addresses or networks to limit');
+  for (const target of values.target) if (!parseCidr(target) && !/^[0-9a-fA-F:]+(\/\d{1,3})?$/.test(target)) invalid('target', `${target} is not an address or network`);
+  for (const id of ['max_up', 'max_down', 'limit_at_up', 'limit_at_down']) if (values[id] && !LIMIT.test(values[id])) invalid(id, 'A rate such as 512k, 10M or 1G (bits per second)');
+  if (!values.max_up && !values.max_down) invalid('max_down', 'Set an upload or a download limit');
+  for (const [at, max] of [['limit_at_up', 'max_up'], ['limit_at_down', 'max_down']]) if (values[at] && values[max] && limitBits(values[at]) > limitBits(values[max])) invalid(at, 'The guaranteed rate cannot exceed the maximum');
+  const options = compact({ target: values.target, max_up: values.max_up, max_down: values.max_down, limit_at_up: values.limit_at_up, limit_at_down: values.limit_at_down, priority: values.priority === '8' ? '' : values.priority, interface: values.interface === 'lan' ? '' : values.interface });
+  return row
+   ? { description: `Change simple queue ${name}`, ops: [{ op: 'set', config: 'routerdeck', section: name, values: options }] }
+   : { description: `Add simple queue ${name}`, ops: [{ op: 'add', config: 'routerdeck', type: 'queue', name, values: Object.fromEntries(Object.entries(options).filter(([, value]) => value !== null)) }] };
+ },
+ remove: rows => ({ description: `Remove simple queue ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'delete', config: 'routerdeck', section: row.section })) }),
+ toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} simple queue ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'routerdeck', section: row.section, values: { disabled: enable ? null : '1' } })) }),
+ comment: (rows, comment) => ({ description: `Comment simple queue ${rows.map(row => row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'routerdeck', section: row.section, values: { comment: comment || null } })) })
+};
+
+function bitrateText(value) {
+ if (!Number.isFinite(value)) return '—';
+ const units = ['bps', 'kbps', 'Mbps', 'Gbps'];
+ let index = 0;
+ while (value >= 1000 && index < units.length - 1) { value /= 1000; index++; }
+ return `${index ? value.toFixed(1) : Math.round(value)} ${units[index]}`;
+}

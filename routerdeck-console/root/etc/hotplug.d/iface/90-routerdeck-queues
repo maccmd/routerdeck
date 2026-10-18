@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Simple Queues live on devices that netifd recreates; set them up again
+# when an interface comes up.
+[ "$ACTION" = ifup ] || exit 0
+[ -x /usr/libexec/routerdeck/queues ] || exit 0
+uci -q show routerdeck | grep -q '=queue$' || [ -f /var/run/routerdeck/queues.json ] || exit 0
+/usr/libexec/routerdeck/queues >/dev/null 2>&1 &

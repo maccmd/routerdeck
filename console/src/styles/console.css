@@ -196,6 +196,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rd-graphs { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-content: start; gap: 10px; min-height: 0; overflow: auto; padding: 10px; }
 .rd-graphs-item h3 { margin: 0 0 3px; font-size: 12px; font-weight: 600; }
 .rd-graphs-note { grid-column: 1 / -1; margin: 0; color: var(--rd-muted); font-size: 11px; }
+.rd-graphing { display: grid; flex: 1; grid-template-columns: 170px minmax(0, 1fr); min-height: 0; }
+.rd-graphing-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow: auto; padding: 6px; border-right: 1px solid var(--rd-border-soft); background: var(--rd-list); }
+.rd-graphing-item { height: 22px; padding: 0 6px; border: 0; background: none; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-graphing-item:hover { background: var(--rd-hover); }
+.rd-graphing-item[aria-selected="true"] { background: var(--rd-select-bg); color: var(--rd-select-text); }
+.rd-graphing-settings { align-self: flex-start; margin: 8px 0 0; }
+.rd-graphing-main { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; padding: 10px; }
 .rd-field-note { margin: 0; padding-top: 3px; color: var(--rd-muted); line-height: 1.4; }
 .rd-field.is-wide .rd-field-static { font-family: var(--rd-mono); }
 .rd-field-error { margin-top: 2px; color: var(--rd-red); }

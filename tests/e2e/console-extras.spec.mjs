@@ -56,6 +56,7 @@ test('Dynamic DNS shows the registered address; Queues shape the WAN', async ({ 
 
  await open(page, 'Queues');
  const queues = win(page, 'Queues');
+ await queues.getByRole('tab', { name: 'SQM' }).click();
  await expect(row(queues, 'eth0')).toContainText('85 Mbps');
  await expect(row(queues, 'eth0').locator('.is-flags')).toHaveText('R');
  await row(queues, 'eth0').click();

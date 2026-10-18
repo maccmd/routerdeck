@@ -20,7 +20,7 @@ function sameRule(live, section, family) {
 export const routingRules = {
  id: 'routing-rules',
  noun: 'Routing Rule',
- sources: ['uci:network', 'rules', 'ifaces'],
+ sources: ['uci:network', 'rules', 'ifaces', 'tables'],
  columns: [
   { id: 'flags', label: '', width: 34 },
   { id: 'family', label: 'Family', width: 50 },
@@ -78,7 +78,7 @@ export const routingRules = {
    { id: 'mark', label: 'Routing Mark', type: 'text', placeholder: '0x10/0xff' },
    { id: 'invert', label: 'Invert', type: 'bool' },
    { id: 'action', label: 'Action', type: 'select', options: ACTIONS.map(value => ({ value, label: value })) },
-   { id: 'lookup', label: 'Table', type: 'combo', options: ['main', 'local', 'default'].map(value => ({ value, label: value })), placeholder: '100', visible: values => values.action === 'lookup' }
+   { id: 'lookup', label: 'Table', type: 'combo', options: ['main', 'local', 'default', ...tableNames(data)].map(value => ({ value, label: value })), placeholder: '100', visible: values => values.action === 'lookup' }
   ];
  },
  values(row, data) {
@@ -93,7 +93,7 @@ export const routingRules = {
   for (const id of ['src', 'dest']) if (values[id] && !parse(values[id])) invalid(id, `Enter an ${v6 ? 'IPv6' : 'IPv4'} address or prefix`);
   if (values.priority && !(/^\d+$/.test(values.priority) && Number(values.priority) < 32766 && Number(values.priority) > 0)) invalid('priority', 'Priority is 1 to 32765; 0, 32766 and 32767 belong to the kernel');
   if (values.mark && !/^(0x[0-9a-f]+|\d+)(\/(0x[0-9a-f]+|\d+))?$/i.test(values.mark)) invalid('mark', 'A mark is a number such as 0x10 or 0x10/0xff');
-  if (values.action === 'lookup' && !/^([A-Za-z0-9_-]+)$/.test(values.lookup ?? '')) invalid('lookup', 'Name the routing table, for example 100 or main');
+  if (values.action === 'lookup' && !/^([A-Za-z0-9_.-]+)$/.test(values.lookup ?? '')) invalid('lookup', 'Name the routing table, for example 100 or main');
   const options = compact({
    priority: values.priority, src: values.src, dest: values.dest, in: values.in, out: values.out, mark: values.mark, invert: values.invert ? '1' : '',
    action: values.action === 'lookup' ? '' : values.action, lookup: values.action === 'lookup' ? values.lookup : ''
@@ -106,4 +106,96 @@ export const routingRules = {
  remove: rows => ({ description: `Remove routing rule ${rows.map(row => row.cells.priority || row.key).join(', ')}`, ops: rows.filter(row => !row.readOnly).map(row => ({ op: 'delete', config: 'network', section: row.section })) }),
  toggle: (rows, enable) => ({ description: `${enable ? 'Enable' : 'Disable'} routing rule ${rows.map(row => row.cells.priority || row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'network', section: row.section, values: { disabled: enable ? null : '1' } })) }),
  comment: (rows, comment) => ({ description: `Comment routing rule ${rows.map(row => row.cells.priority || row.key).join(', ')}`, ops: rows.map(row => ({ op: 'set', config: 'network', section: row.section, values: { comment: comment || null } })) })
+};
+
+/* --- Routing tables ---------------------------------------------------------- */
+
+const RESERVED = { 0: 'unspec', 128: 'prelocal', 253: 'default', 254: 'main', 255: 'local' };
+
+// /etc/iproute2/rt_tables: "id name" lines; other lines stay as they are.
+export function parseTables(text) {
+ return String(text ?? '').replace(/\n$/, '').split('\n').filter((line, index, all) => text || index < all.length - 1).map(line => {
+  const entry = /^\s*(\d+)\s+([A-Za-z0-9_.-]+)\s*$/.exec(line);
+  return entry ? { type: 'table', id: Number(entry[1]), name: entry[2] } : { type: 'raw', text: line };
+ });
+}
+export function formatTables(nodes) {
+ const lines = nodes.map(node => node.type === 'raw' ? node.text : `${node.id}\t${node.name}`);
+ return lines.length ? lines.join('\n') + '\n' : '';
+}
+
+// Named tables can be used by routes and rules by name; netifd resolves
+// names through this file.
+export function tableNames(data) {
+ return parseTables(data.tables?.text).filter(node => node.type === 'table' && !RESERVED[node.id]).map(node => node.name);
+}
+
+export const routingTables = {
+ id: 'routing-tables',
+ noun: 'Routing Table',
+ sources: ['tables', 'uci:network', 'routes4', 'routes6'],
+ columns: [
+  { id: 'flags', label: '', width: 30 },
+  { id: 'name', label: 'Name', width: 140 },
+  { id: 'id', label: 'Number', width: 70, align: 'right', sort: value => Number(value) || 0 },
+  { id: 'routes', label: 'Routes', width: 70, align: 'right', sort: value => Number(value) || 0 },
+  { id: 'rules', label: 'Rules', width: 70, align: 'right', sort: value => Number(value) || 0 }
+ ],
+ flagLegend: { D: 'built in, or used without a name' },
+ defaultSort: 'id',
+ status: data => data.tables?.path ?? '/etc/iproute2/rt_tables',
+ rows(data) {
+  const nodes = parseTables(data.tables?.text);
+  const named = nodes.map((node, index) => ({ node, index })).filter(item => item.node.type === 'table');
+  const kernel = [...(data.routes4 ?? []), ...(data.routes6 ?? [])];
+  const rules = [...sections(data['uci:network'], 'rule'), ...sections(data['uci:network'], 'rule6')];
+  const count = (name, id) => ({
+   routes: kernel.filter(route => [name, String(id)].includes(String(route.table ?? 'main'))).length,
+   rules: rules.filter(rule => [name, String(id)].includes(String(rule.lookup ?? ''))).length
+  });
+  const rows = named.filter(item => !RESERVED[item.node.id] || ['main', 'local', 'default'].includes(item.node.name)).map(({ node, index }) => {
+   const used = count(node.name, node.id), builtin = !!RESERVED[node.id];
+   return { key: `table:${node.id}`, index, node, dynamic: builtin, readOnly: builtin, flags: builtin ? 'D' : '', cells: { name: node.name, id: String(node.id), routes: String(used.routes), rules: String(used.rules) } };
+  });
+  // Tables in use by number only.
+  const known = new Set(named.flatMap(item => [item.node.name, String(item.node.id)]));
+  for (const id of new Set([...kernel.map(route => String(route.table ?? 'main')), ...rules.map(rule => String(rule.lookup ?? ''))].filter(value => /^\d+$/.test(value) && !known.has(value)))) {
+   const used = count(id, id);
+   rows.push({ key: `table:${id}`, dynamic: true, readOnly: true, flags: 'D', cells: { name: '', id, routes: String(used.routes), rules: String(used.rules) } });
+  }
+  return rows;
+ },
+ itemTitle: row => `Routing Table <${row?.cells.name || row?.cells.id || 'new'}>`,
+ canAdd: () => true,
+ canRemove: row => !row.readOnly,
+ removeBlocked: rows => {
+  const used = rows.find(row => Number(row.cells.routes) || Number(row.cells.rules));
+  return used ? `Table ${used.cells.name} still has ${used.cells.routes} routes and ${used.cells.rules} rules` : null;
+ },
+ fields: () => [
+  { id: 'name', label: 'Name', type: 'text', placeholder: 'isp2' },
+  { id: 'id', label: 'Number', type: 'number', placeholder: '1 to 252' }
+ ],
+ values: row => ({ name: row.cells.name, id: row.cells.id }),
+ defaults: data => {
+  const used = new Set(parseTables(data.tables?.text).filter(node => node.type === 'table').map(node => node.id));
+  let id = 100;
+  while (used.has(id) && id < 252) id++;
+  return { name: '', id: String(id) };
+ },
+ save(values, row, data) {
+  const name = String(values.name ?? '').trim(), id = Number(values.id);
+  if (!/^[A-Za-z][A-Za-z0-9_.-]{0,30}$/.test(name)) invalid('name', 'A name starting with a letter');
+  if (!(Number.isInteger(id) && id >= 1 && id <= 252 && !RESERVED[id])) invalid('id', 'A number from 1 to 252 (except 128)');
+  const nodes = parseTables(data.tables?.text);
+  if (nodes.some((node, index) => node.type === 'table' && index !== row?.index && (node.name === name || node.id === id))) invalid('name', `Table ${name} or number ${id} already exists`);
+  const node = { type: 'table', id, name };
+  if (row) nodes[row.index] = node;
+  else nodes.push(node);
+  return { description: `${row ? 'Change' : 'Add'} routing table ${name} (${id})`, ops: [{ op: 'text', config: 'rt_tables', text: formatTables(nodes), expect: data.tables?.text ?? '' }] };
+ },
+ remove(rows, data) {
+  const drop = new Set(rows.map(row => row.index));
+  return { description: `Remove routing table ${rows.map(row => row.cells.name).join(', ')}`, ops: [{ op: 'text', config: 'rt_tables', text: formatTables(parseTables(data.tables?.text).filter((node, index) => !drop.has(index))), expect: data.tables?.text ?? '' }] };
+ }
 };

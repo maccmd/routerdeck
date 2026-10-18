@@ -58,7 +58,8 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
   network and lists who answers with MAC and host name; *Netwatch* pings hosts
   from the router itself and runs commands when they go up or down; *Wake on
   LAN* sends a magic packet; *Graphs* and the *Traffic* tab of an interface
-  draw live Tx/Rx.
+  draw live Tx/Rx; *Graphing* keeps day, week, month and year history of
+  interfaces, CPU and memory on the router.
 - **System.** Identity, Clock (time zone, set from this computer), NTP,
   Logging, Password, Users, Certificates, Packages (install, upgrade,
   uninstall, check for updates), Scheduler (cron), Scripts, Startup (procd
@@ -120,7 +121,9 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | IP ▸ UPnP | `upnpd` (miniupnpd) and its lease file | — | Settings, live mappings, ordered permission rules |
 | IP ▸ Dynamic DNS | `ddns` service sections (ddns-scripts) and its run directory | X, R updater running, 6 IPv6 | Provider list from ddns-scripts or a custom update URL |
 | Routing ▸ Rules | `rule` and `rule6` sections, `ip rule` | X, I invert, D kernel rule, A active | Policy routing to other tables |
+| Routing ▸ Tables | `/etc/iproute2/rt_tables`, with routes and rules per table | D built in or unnamed | Named tables for routes and rules; a table in use cannot be removed |
 | Queues ▸ SQM | `queue` sections (sqm-scripts), `tc` | X, R shaping | cake or fq_codel per device with link-layer settings |
+| Queues ▸ Simple Queues | `queue` sections of `/etc/config/routerdeck`, HTB classes made by `/usr/libexec/routerdeck/queues` | X, S shaping | Per address or network: max and guaranteed upload and download, priority; download shaped on the LAN device, upload on an ifb device; live rates and bytes |
 | System ▸ … | `/etc/config/system`, `/etc/crontabs/root`, `rc list`, apk/opkg databases | — | Scheduler jobs: "# name" lines name them, commented-out jobs are disabled |
 | System ▸ Packages | apk or opkg: installed packages, `apk list --upgradable` / `opkg list-upgradable` | D dependency, U update available | Install, Upgrade, Uninstall and Check For Updates run the package manager as a job and show its output; not undoable |
 | System ▸ Scripts | `script` sections in `/etc/config/routerdeck` (the source keeps its lines) | — | *Run Script* shows the output; the scheduler and Netwatch run one with `/usr/libexec/routerdeck/run-script <name>`; *Jobs* lists running scripts and stops them |
@@ -133,6 +136,7 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | Tools ▸ Bandwidth Test, IP Scan | `bandwidth` and `scan` jobs of the same runner | — | Need iperf3 for the bandwidth test |
 | Tools ▸ Netwatch | `netwatch` sections in `/etc/config/routerdeck`, `routerdeck-netwatch` service | U up, D down, X disabled | Commands run on changes, not on the first check |
 | Tools ▸ Wake on LAN | etherwake | — | Shown when etherwake is installed |
+| Tools ▸ Graphing | `graphing` section of `/etc/config/routerdeck`, `routerdeck-graphing` service | — | Samples every 10 seconds; 5-minute, 30-minute, 2-hour and 1-day averages in `/var/run/routerdeck/graphs.json`, copied to `/etc/routerdeck` every hour when *Store on Flash* is set |
 | Tools ▸ Ping, Traceroute | `ping` and `traceroute` jobs run by `/usr/libexec/routerdeck/diag` | — | Run outside rpcd; end when stopped, finished, unread for 15 seconds, or after an hour |
 | Tools ▸ Torch | `/proc/net/nf_conntrack` every second | — | Rates from byte counters of tracked connections, oriented to the chosen device by the routing table |
 | Log | logd (`log read`), `logread` fallback | — | Last 1000 lines, follows new entries |
@@ -181,13 +185,13 @@ names come from the form labels (*Src. Address* is `src-address`).
   `settings`, `pool`, `ipsec peer|policy|proposal|active-peers`, `dhcp-server`,
   `dhcp-server network|lease|option`, `dns`, `dns static`, `ddns`, `service`,
   `upnp`, `upnp mapping|rule`), `/ipv6` (`address`, `neighbor`, `route`,
-  `dhcp-server binding`), `/ppp` (`secret`, `pppoe-server`), `/routing rule`, `/queue sqm`, `/log`, `/system`
+  `dhcp-server binding`), `/ppp` (`secret`, `pppoe-server`), `/routing rule|table`, `/queue simple|sqm`, `/log`, `/system`
   (`identity`, `clock`, `ntp client`, `logging`, `package` with `install`,
   `uninstall`, `upgrade` and `check-for-updates`, `scheduler`, `script` with
   `run` and `script job`, `startup`, `resource`, `leds`, `history`, and
   `reboot` and `reset-configuration`, which ask first), `/user`,
   `/certificate` (`trusted`), `/disk` (`mount`, `swap`, `settings`) and `/tool`
-  (`traceroute`, `torch`, `bandwidth-test`, `ip-scan`, `netwatch`, `wol`).
+  (`traceroute`, `torch`, `bandwidth-test`, `ip-scan`, `netwatch`, `graphing`, `wol`).
   `/ip address` and
   `/ip/address` are the same; `..` goes up, `/` to the top; any unique
   abbreviation works (`/ip fi f pr`).
@@ -219,7 +223,7 @@ Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 `redo`, `safemode`). The plugin changes only `network`, `firewall`, `dhcp`,
 `wireless`, `system`, `dropbear`, `uhttpd`, `ttyd`, `upnpd`, `ddns`, `sqm`,
 `routerdeck`, `rpcd`, `fstab`, `pppoe`, `openvpn`, `ipsec`, `/etc/crontabs/root`,
-`/etc/sysctl.conf` and pppd's secrets and options, and:
+`/etc/sysctl.conf`, `/etc/iproute2/rt_tables` and pppd's secrets and options, and:
 
 1. refuses to run while LuCI is waiting to confirm an *apply with rollback*,
    so the two rollbacks cannot overwrite each other;
@@ -257,7 +261,8 @@ operations and scripts too, started by the plugin's `task` method: their
 output streams line by line, a package operation always runs to its end and
 only one runs at a time, and Stop ends a script with every command it
 started. Netwatch is a procd service, `routerdeck-netwatch`, so it keeps
-watching while no console is open.
+watching while no console is open; Graphing is another, `routerdeck-graphing`,
+which runs only while it is turned on.
 
 Actions that are not configuration changes — starting a service, setting the
 clock, changing the password, Wake on LAN, installing packages, files,
@@ -287,8 +292,10 @@ needs SSL, or the browser blocks the embedded terminal.
 ## Known limitations
 
 - Desktop browsers only; on narrow screens every window fills the work area.
-- Traffic graphs are drawn from rates this console samples while a window
-  needs them; the last five minutes live in the browser, not on the router.
+- Live traffic graphs are drawn from rates this console samples while a window
+  needs them; the last five minutes live in the browser. Longer history needs
+  Tools ▸ Graphing turned on, and is lost on reboot unless *Store on Flash* is
+  set (which writes to flash once an hour).
 - DHCP Networks and Options are dnsmasq options; where odhcpd is the main
   DHCPv4 server (`maindhcp`), the windows say so, because it ignores them.
 - Package operations, file changes, a restored backup, flashed firmware and

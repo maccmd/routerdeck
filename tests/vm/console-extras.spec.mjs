@@ -72,6 +72,7 @@ test('an SQM queue puts cake on the WAN device; disabling removes it', async ({ 
  test.skip(probe('uci -q get sqm.eth1.enabled') !== '0', 'This guest has no disabled default queue on eth1');
  await open(page, 'Queues');
  const queues = win(page, 'Queues');
+ await queues.getByRole('tab', { name: 'SQM' }).click();
  await row(queues, 'eth1').click();
  await page.keyboard.press('Control+e');
  await expect.poll(() => probe('tc qdisc show dev eth1'), { timeout: 30000 }).toContain('qdisc cake');

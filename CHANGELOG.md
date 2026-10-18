@@ -70,6 +70,11 @@
 - Add Interfaces ▸ Bonding, Tunnels (GRE, EoIP, IPIP, VXLAN and their IPv6
   forms) and OpenVPN, L2TP and PPTP clients, PPP ▸ PPPoE Servers and Secrets,
   and IP ▸ IPsec (peers, policies, proposals and active SAs over strongSwan).
+- Add Routing ▸ Tables (named tables in rt_tables, offered to routes and
+  rules) and Queues ▸ Simple Queues: per-address upload and download limits
+  as HTB classes, with live rates; the Queues window no longer needs SQM.
+- Add Tools ▸ Graphing: an optional `routerdeck-graphing` service keeps day,
+  week, month and year history of interfaces, CPU and memory on the router.
 
 ### Removed
 
