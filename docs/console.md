@@ -60,10 +60,11 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
   LAN* sends a magic packet; *Graphs* and the *Traffic* tab of an interface
   draw live Tx/Rx.
 - **System.** Identity, Clock (time zone, set from this computer), NTP,
-  Logging, Password, Packages (install, upgrade, uninstall, check for
-  updates), Scheduler (cron), Scripts, Startup (procd services), Resources,
-  Backup (download and restore), Firmware (sysupgrade), Reset Configuration
-  and Reboot.
+  Logging, Password, Users, Certificates, Packages (install, upgrade,
+  uninstall, check for updates), Scheduler (cron), Scripts, Startup (procd
+  services), Resources, LEDs, Disks (with mount points and swap), Backup
+  (download and restore), Firmware (sysupgrade), Reset Configuration and
+  Reboot.
 - **Files.** Browse the router's file system, upload, download, create
   folders and remove files.
 - **Terminal.** *New Terminal* (Alt+T) is a command line in the RouterOS style
@@ -113,6 +114,10 @@ Dark theme: [screenshot](screenshots/console-dark.png). Both show the simulated 
 | System ▸ Scripts | `script` sections in `/etc/config/routerdeck` (the source keeps its lines) | — | *Run Script* shows the output; the scheduler and Netwatch run one with `/usr/libexec/routerdeck/run-script <name>`; *Jobs* lists running scripts and stops them |
 | System ▸ Backup, Firmware, Reset Configuration | `sysupgrade -b`, `-r`, image check through procd's `validate_firmware_image`, `firstboot` | — | A backup and an image are uploaded, checked and confirmed before anything changes; an image the router rejects is never flashed; reset needs the overlay of squashfs images |
 | Files | the file system through the plugin, transfers through cgi-io | — | Uploads, downloads and removals are not undoable; `/proc`, `/sys`, `/dev` and `/rom` cannot be changed |
+| System ▸ Users | `login` sections of `/etc/config/rpcd` and the ACL groups in `/usr/share/rpcd/acl.d` | C this session's account | Groups full, read or custom ACL groups; a new password is hashed (SHA-512 crypt) in the browser, or the login uses a system account's password; the account you are logged in with cannot be removed |
+| System ▸ Certificates | uhttpd's certificate and key, ACME certificates in `/etc/ssl/acme`, the CA bundle | K private key, A authority, T trusted, E expired | Parsed in the browser; Regenerate (px5g), Import (PEM or DER, certificate and key) and Restore Previous restart uhttpd and are not undoable |
+| System ▸ LEDs | `led` sections of `/etc/config/system`, `/sys/class/leds` | D not set up, I not on this board, R lit | Triggers none, default-on, timer, heartbeat, netdev and those the LED offers; `/etc/init.d/led` applies them |
+| System ▸ Disks | `/sys/block`, `block info`, `/proc/mounts`, `df`; `mount`, `swap` and `global` of `/etc/config/fstab` | M mounted, R removable; X, A active swap | Mount points name file systems by UUID and are mounted or unmounted at once (block-mount); Unmount and Mount All are not changes |
 | Tools ▸ Bandwidth Test, IP Scan | `bandwidth` and `scan` jobs of the same runner | — | Need iperf3 for the bandwidth test |
 | Tools ▸ Netwatch | `netwatch` sections in `/etc/config/routerdeck`, `routerdeck-netwatch` service | U up, D down, X disabled | Commands run on changes, not on the first check |
 | Tools ▸ Wake on LAN | etherwake | — | Shown when etherwake is installed |
@@ -166,8 +171,9 @@ names come from the form labels (*Src. Address* is `src-address`).
   `dhcp-server binding`), `/routing rule`, `/queue sqm`, `/log`, `/system`
   (`identity`, `clock`, `ntp client`, `logging`, `package` with `install`,
   `uninstall`, `upgrade` and `check-for-updates`, `scheduler`, `script` with
-  `run` and `script job`, `startup`, `resource`, `history`, and `reboot` and
-  `reset-configuration`, which ask first) and `/tool`
+  `run` and `script job`, `startup`, `resource`, `leds`, `history`, and
+  `reboot` and `reset-configuration`, which ask first), `/user`,
+  `/certificate` (`trusted`), `/disk` (`mount`, `swap`, `settings`) and `/tool`
   (`traceroute`, `torch`, `bandwidth-test`, `ip-scan`, `netwatch`, `wol`).
   `/ip address` and
   `/ip/address` are the same; `..` goes up, `/` to the top; any unique
@@ -199,7 +205,7 @@ Bandwidth Test and Wake on LAN until theirs is installed.
 Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 `redo`, `safemode`). The plugin changes only `network`, `firewall`, `dhcp`,
 `wireless`, `system`, `dropbear`, `uhttpd`, `ttyd`, `upnpd`, `ddns`, `sqm`,
-`routerdeck` and `/etc/crontabs/root`, and:
+`routerdeck`, `rpcd`, `fstab` and `/etc/crontabs/root`, and:
 
 1. refuses to run while LuCI is waiting to confirm an *apply with rollback*,
    so the two rollbacks cannot overwrite each other;
@@ -217,7 +223,9 @@ Every action is one call to the `routerdeck` rpcd object (`apply`, `undo`,
 6. after firewall changes, flushes the nftables sets of address lists that lost
    entries and deletes removed ones, because `fw4 reload` only adds to sets;
    after changes to WireGuard peers, restarts that interface, because netifd
-   reads peers only when it brings the interface up.
+   reads peers only when it brings the interface up; after changes to mount
+   points, unmounts those removed or disabled and runs `block mount`; after
+   changes to LEDs, runs `/etc/init.d/led start`.
 
 Safe Mode stores a snapshot of those configurations. A procd service
 (`routerdeck-safemode`), separate from rpcd, watches the console's heartbeats
@@ -251,7 +259,8 @@ while Safe Mode is on.
 `routerdeck-console` group read access to the status objects and UCI configs the
 windows show (including iwinfo, the diagnostics jobs and directory listings),
 and write access to the plugin's `apply`, `undo`, `redo`, `safemode`, `wol`,
-`task`, `file_remove`, `file_mkdir`, `restore`, `firmware` and `reset`, `rc
+`task`, `file_remove`, `file_mkdir`, `restore`, `firmware`, `reset`, `users`,
+`certificate`, `unmount` and `mount`, `rc
 init`, `system reboot`, LuCI's `setLocaltime` and `setPassword`, and reading
 and writing any file through cgi-io. Only writers get file transfers: a
 read-only account cannot download `/etc/shadow`. The plugin runs as root

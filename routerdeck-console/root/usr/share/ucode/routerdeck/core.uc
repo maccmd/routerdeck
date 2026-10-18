@@ -3,7 +3,7 @@
 // configuration snapshots, the action history and the Safe Mode record.
 'use strict';
 
-import { readfile, writefile, rename, unlink, mkdir, lsdir, rmdir } from 'fs';
+import { readfile, writefile, rename, unlink, mkdir, lsdir, rmdir, access } from 'fs';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
 
@@ -18,7 +18,7 @@ export const DIAG = RUN + '/diag';
 // Configurations the console edits and Safe Mode protects. Most are UCI
 // files in /etc/config; FILES names the others, edited as whole texts.
 export const FILES = { crontab: '/etc/crontabs/root' };
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab' ];
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -81,12 +81,29 @@ function start_unregistered(bus, name) {
 		system([ '/etc/init.d/' + service, 'restart' ]);
 }
 
+// The text of every section of one type, to tell whether those changed.
+function sections_text(text, type) {
+	let found = '', current = false;
+	for (let line in split(text ?? '', '\n')) {
+		let head = match(line, /^config[ \t]+([^ \t]+)/);
+		if (head)
+			current = head[1] == type;
+		if (current)
+			found += line + '\n';
+	}
+	return found;
+}
+
 // procd reloads the services registered for a changed configuration.
 export function announce(names) {
 	let bus = connect();
 	if (!bus)
 		return false;
 	for (let name in names) {
+		// rpcd reads logins at every login; block-mount is handled by
+		// sync_mounts. Neither needs a reload.
+		if (name in [ 'rpcd', 'fstab' ])
+			continue;
 		// crond has no configuration trigger; it reads its tables at start.
 		if (name == 'crontab')
 			system('/etc/init.d/cron restart >/dev/null 2>&1');
@@ -100,6 +117,42 @@ export function announce(names) {
 		}
 	}
 	bus.disconnect();
+	return true;
+};
+
+// LEDs are set by a plain init script, not by procd's reload of `system`.
+export function sync_leds(before_text, after_text) {
+	if (sections_text(before_text, 'led') == sections_text(after_text, 'led'))
+		return false;
+	system('/etc/init.d/led start >/dev/null 2>&1');
+	return true;
+};
+
+// Mount points: those removed or disabled are unmounted, then block-mount
+// mounts what the configuration enables.
+function mount_targets(text) {
+	let targets = {}, current = null;
+	for (let line in split(text ?? '', '\n')) {
+		let words = match(trim(line), /^(config|option)[ \t]+([^ \t]+)([ \t]+'?([^']*)'?)?$/);
+		if (!words)
+			continue;
+		if (words[1] == 'config')
+			current = words[2] == 'mount' ? { enabled: true } : null;
+		else if (current && words[2] == 'target')
+			targets[words[4]] = current;
+		else if (current && words[2] == 'enabled')
+			current.enabled = !(words[4] in [ '0', 'no', 'off', 'false' ]);
+	}
+	return targets;
+}
+
+export function sync_mounts(before_text, after_text) {
+	let before = mount_targets(before_text), after = mount_targets(after_text);
+	for (let target, mount in before)
+		if (mount.enabled && !after[target]?.enabled && index(readfile('/proc/mounts') ?? '', ' ' + target + ' ') >= 0)
+			system(sprintf("umount '%s' >/dev/null 2>&1", replace(target, "'", '')));
+	if (access('/sbin/block', 'x'))
+		system('/sbin/block mount >/dev/null 2>&1');
 	return true;
 };
 
@@ -325,6 +378,10 @@ export function safe_restore(state, reason) {
 				sync_firewall_sets(current, saved);
 			if (name == 'network')
 				restart_wireguard(current, saved);
+			if (name == 'fstab')
+				sync_mounts(current, saved);
+			if (name == 'system')
+				sync_leds(current, saved);
 		}
 	}
 	announce(changed);

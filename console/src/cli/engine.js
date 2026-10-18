@@ -46,9 +46,12 @@ const TREE = {
   identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },
   logging: { model: 'system-logging' }, package: { model: 'system-packages', commands: ['install'] }, scheduler: { model: 'system-scheduler' },
   script: { model: 'system-scripts', children: { job: { model: 'system-script-jobs' } } },
-  startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }
+  startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }, leds: { model: 'system-leds' }
  } },
- tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' } } }
+ tool: { commands: ['traceroute', 'torch', 'bandwidth-test', 'ip-scan', 'wol'], children: { netwatch: { model: 'netwatch' } } },
+ user: { model: 'users' },
+ certificate: { model: 'certificates', children: { trusted: { model: 'certificates-trusted' } } },
+ disk: { model: 'disks', children: { mount: { model: 'disk-mounts' }, swap: { model: 'disk-swap' }, settings: { model: 'disk-settings' } } }
 };
 
 function build(spec, name, parent) {

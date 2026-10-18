@@ -17,7 +17,7 @@ import {
 	CONFIGS, FILES, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
-	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, restart_wireguard, merge_config
+	safe_heartbeat, safe_clear, safe_restore, log_message, sync_firewall_sets, sync_mounts, sync_leds, restart_wireguard, merge_config
 } from 'routerdeck.core';
 
 const VERSION = '0.1.0';
@@ -849,6 +849,254 @@ function reset() {
 	return { ok: true, rebooting: true };
 }
 
+/* --- Users, certificates, LEDs and disks ------------------------------- */
+
+// rpcd logins without their password hashes: only what kind of password a
+// login has. rpcd reads them at every login, so changes need no reload.
+function password_kind(value) {
+	if (value == null || value == '')
+		return 'none';
+	let account = match(value, /^\$p\$(.+)$/);
+	if (account)
+		return 'system:' + account[1];
+	return match(value, /^\$[156]\$/) ? 'hash' : 'other';
+}
+
+function users(request) {
+	let ctx = cursor(), logins = [];
+	ctx.load('rpcd');
+	ctx.foreach('rpcd', 'login', section => {
+		push(logins, {
+			section: section['.name'], username: section.username, password: password_kind(section.password),
+			read: type(section.read) == 'array' ? section.read : section.read ? [ section.read ] : [],
+			write: type(section.write) == 'array' ? section.write : section.write ? [ section.write ] : [],
+			comment: section.comment
+		});
+	});
+	let groups = {};
+	for (let file in lsdir('/usr/share/rpcd/acl.d') ?? []) {
+		let acl = read_json('/usr/share/rpcd/acl.d/' + file, {});
+		for (let name, group in (type(acl) == 'object' ? acl : {}))
+			groups[name] = type(group?.description) == 'string' ? group.description : '';
+	}
+	let accounts = [];
+	for (let line in split(readfile('/etc/passwd') ?? '', '\n')) {
+		let fields = split(line, ':');
+		if (length(fields) >= 7)
+			push(accounts, { name: fields[0], uid: int(fields[2]), shell: fields[6] });
+	}
+	return { current: user_of(request), logins, groups, accounts };
+}
+
+const CA_BUNDLE = '/etc/ssl/certs/ca-certificates.crt';
+const CERT_UPLOADS = { cert: '/tmp/routerdeck-cert', key: '/tmp/routerdeck-key' };
+
+// Paths reach a shell, so only plain ones are used.
+function web_files() {
+	let ctx = cursor();
+	ctx.load('uhttpd');
+	let path = (option, fallback) => {
+		let value = ctx.get('uhttpd', 'main', option);
+		return type(value) == 'string' && match(value, /^\/[A-Za-z0-9._\/-]+$/) ? value : fallback;
+	};
+	return { cert: path('cert', '/etc/uhttpd.crt'), key: path('key', '/etc/uhttpd.key') };
+}
+
+// The web server's certificate and those of ACME clients, as file bytes in
+// base64; the console parses them.
+function certificates() {
+	let web = web_files(), list = [];
+	let add = (path, role, key) => {
+		let data = readfile(path);
+		if (data != null && length(data) <= 262144)
+			push(list, { path, role, data: b64enc(data), key: key != null && access(key) == true, keypath: key, previous: role == 'web' && access(path + '.old') == true });
+	};
+	add(web.cert, 'web', web.key);
+	for (let dir in [ '/etc/ssl/acme', '/etc/acme' ])
+		for (let file in lsdir(dir) ?? [])
+			if (match(file, /\.(crt|cer|pem)$/) && !match(file, /(key|csr)/))
+				add(dir + '/' + file, 'acme', null);
+	return { certificates: list, px5g: executable('/usr/sbin/px5g') };
+}
+
+function trusted() {
+	let data = readfile(CA_BUNDLE);
+	return { path: CA_BUNDLE, data: data != null && length(data) <= 1048576 ? b64enc(data) : null };
+}
+
+// uhttpd reads its certificate at start; the restart waits until this call
+// has answered, since it ends the connection the answer goes out on.
+function restart_web() {
+	system('(sleep 1; /etc/init.d/uhttpd restart) >/dev/null 2>&1 &');
+}
+
+const SUBJECT = /^[A-Za-z0-9 ._-]{0,64}$/;
+const PEM_CERTS = /-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g;
+const PEM_KEY = /-----BEGIN ([A-Z]+ )?PRIVATE KEY-----[^-]+-----END ([A-Z]+ )?PRIVATE KEY-----/;
+
+// The uploaded certificate (PEM, possibly with its chain and key, or DER)
+// and key (PEM or DER), as they will be installed.
+function uploaded_certificate() {
+	let cert = readfile(CERT_UPLOADS.cert), key = readfile(CERT_UPLOADS.key);
+	if (cert == null)
+		return null;
+	if (index(cert, '-----BEGIN') >= 0) {
+		let chain = match(cert, PEM_CERTS);
+		let pem_key = match(cert, PEM_KEY) ?? match(key ?? '', PEM_KEY);
+		return length(chain) ? { cert: join('\n', map(chain, block => block[0])) + '\n', key: pem_key ? pem_key[0] + '\n' : key } : null;
+	}
+	return { cert, key: key != null && index(key, '-----BEGIN') >= 0 ? (match(key, PEM_KEY)?.[0] ?? null) : key };
+}
+
+function certificate(args) {
+	let web = web_files();
+	if (args.action == 'discard') {
+		unlink(CERT_UPLOADS.cert);
+		unlink(CERT_UPLOADS.key);
+		return { ok: true };
+	}
+	if (args.action == 'regenerate') {
+		if (!executable('/usr/sbin/px5g'))
+			return failure('missing', 'Making a certificate needs px5g (px5g-mbedtls or px5g-wolfssl)');
+		let ctx = cursor();
+		ctx.load('uhttpd');
+		let option = (name, fallback) => {
+			let value = ctx.get('uhttpd', 'defaults', name) ?? fallback;
+			return match(value, SUBJECT) ? value : fallback;
+		};
+		let host = trim(readfile('/proc/sys/kernel/hostname') ?? 'OpenWrt');
+		let common = match(host, SUBJECT) ? host : option('commonname', 'OpenWrt');
+		let keyopt = option('key_type', 'ec') == 'ec' ? 'ec -pkeyopt ec_paramgen_curve:' + option('ec_curve', 'P-256') : 'rsa:' + int(option('bits', '2048'));
+		let result = run(sprintf("/usr/sbin/px5g selfsigned -der -days %d -newkey %s -keyout '%s.new' -out '%s.new' -subj '/C=%s/ST=%s/L=%s/O=%s/CN=%s' -addext extendedKeyUsage=serverAuth -addext subjectAltName=DNS:%s",
+			int(option('days', '397')), keyopt, web.key, web.cert, option('country', 'ZZ'), option('state', 'Somewhere'), option('location', 'Unknown'), option('organization', 'OpenWrt'), common, common));
+		if (result.code != 0 || !access(web.cert + '.new') || !access(web.key + '.new')) {
+			unlink(web.cert + '.new');
+			unlink(web.key + '.new');
+			return failure('failed', trim(result.output) || 'px5g could not make a certificate');
+		}
+		system(sprintf("cp '%s' '%s.old'; cp '%s' '%s.old'; mv '%s.new' '%s'; mv '%s.new' '%s'", web.cert, web.cert, web.key, web.key, web.cert, web.cert, web.key, web.key));
+		log_message('New self-signed web server certificate for ' + common);
+		restart_web();
+		return { ok: true };
+	}
+	if (args.action == 'previous') {
+		if (!access(web.cert + '.old') || !access(web.key + '.old'))
+			return failure('missing', 'There is no previous certificate');
+		system(sprintf("mv '%s' '%s.tmp'; mv '%s' '%s.tmp'; mv '%s.old' '%s'; mv '%s.old' '%s'; mv '%s.tmp' '%s.old'; mv '%s.tmp' '%s.old'",
+			web.cert, web.cert, web.key, web.key, web.cert, web.cert, web.key, web.key, web.cert, web.cert, web.key, web.key));
+		restart_web();
+		return { ok: true };
+	}
+	let found = uploaded_certificate();
+	if (!found) {
+		unlink(CERT_UPLOADS.cert);
+		unlink(CERT_UPLOADS.key);
+		return failure('invalid', 'Choose a certificate (PEM or DER) and its private key');
+	}
+	if (args.action == 'check')
+		return { ok: true, data: b64enc(found.cert), key: found.key != null && length(found.key) > 0 };
+	if (args.action != 'import')
+		return failure('invalid', 'Unknown action');
+	if (!found.key)
+		return failure('invalid', 'The private key is missing; choose the certificate and its key together');
+	system(sprintf("cp '%s' '%s.old'; cp '%s' '%s.old'", web.cert, web.cert, web.key, web.key));
+	writefile(web.cert, found.cert);
+	writefile(web.key, found.key);
+	system([ 'chmod', '600', web.key ]);
+	unlink(CERT_UPLOADS.cert);
+	unlink(CERT_UPLOADS.key);
+	log_message('Imported a web server certificate');
+	restart_web();
+	return { ok: true };
+}
+
+// LEDs in sysfs with their triggers; the current one is in brackets.
+function leds() {
+	let list = [];
+	for (let name in sort(lsdir('/sys/class/leds') ?? [])) {
+		let dir = '/sys/class/leds/' + name, current = null;
+		let triggers = map(filter(split(trim(readfile(dir + '/trigger') ?? ''), /\s+/), length), word => {
+			let selected = match(word, /^\[(.+)\]$/);
+			if (selected)
+				current = selected[1];
+			return selected ? selected[1] : word;
+		});
+		push(list, { name, brightness: int(trim(readfile(dir + '/brightness') ?? '0')), max: int(trim(readfile(dir + '/max_brightness') ?? '1')), trigger: current, triggers });
+	}
+	return { leds: list };
+}
+
+// Mounts are written with octal escapes for spaces and the like.
+const unescape_mount = text => replace(text, /\\([0-7]{3})/g, (all, code) => chr(int(code, 8)));
+
+function disks() {
+	let mounts = [];
+	for (let line in split(readfile('/proc/mounts') ?? '', '\n')) {
+		let words = split(line, ' ');
+		if (length(words) >= 4)
+			push(mounts, { source: words[0], target: unescape_mount(words[1]), fstype: words[2], options: words[3] });
+	}
+	let usage = {};
+	for (let line in split(run('df -kP').output, '\n')) {
+		let words = match(line, /^[^ ]+ +([0-9]+) +([0-9]+) +([0-9]+) +[0-9]+% +(.+)$/);
+		if (words)
+			usage[words[4]] = { size: int(words[1]) * 1024, used: int(words[2]) * 1024, available: int(words[3]) * 1024 };
+	}
+	let block = executable('/sbin/block');
+	let filesystems = {};
+	for (let line in split(run(block ? '/sbin/block info' : 'blkid').output, '\n')) {
+		let head = match(line, /^([^:]+): (.*)$/);
+		if (!head)
+			continue;
+		let entry = {};
+		for (let pair in match(head[2], /([A-Z_]+)="([^"]*)"/g))
+			entry[lc(pair[1])] = pair[2];
+		filesystems[head[1]] = entry;
+	}
+	let devices = [];
+	for (let name in sort(lsdir('/sys/block') ?? [])) {
+		// Loop and RAM devices only count when they hold a file system.
+		if (match(name, /^(loop|ram|zram|nbd)/) && !filesystems['/dev/' + name])
+			continue;
+		let dir = '/sys/block/' + name;
+		let device = {
+			name, size: int(trim(readfile(dir + '/size') ?? '0')) * 512, removable: trim(readfile(dir + '/removable') ?? '0') == '1',
+			model: trim(readfile(dir + '/device/model') ?? ''), vendor: trim(readfile(dir + '/device/vendor') ?? ''), partitions: []
+		};
+		for (let part in sort(lsdir(dir) ?? []))
+			if (access(dir + '/' + part + '/partition'))
+				push(device.partitions, { name: part, size: int(trim(readfile(dir + '/' + part + '/size') ?? '0')) * 512 });
+		push(devices, device);
+	}
+	let swaps = [];
+	for (let line in slice(split(readfile('/proc/swaps') ?? '', '\n'), 1)) {
+		let words = split(trim(line), /\s+/);
+		if (length(words) >= 4)
+			push(swaps, { source: words[0], size: int(words[2]) * 1024, used: int(words[3]) * 1024 });
+	}
+	return { block, devices, filesystems, mounts, usage, swaps };
+}
+
+// File systems the router itself needs stay mounted.
+const SYSTEM_MOUNTS = /^\/(|rom|overlay|tmp|tmp\/.*|dev|dev\/.*|proc|proc\/.*|sys|sys\/.*|boot)$/;
+
+function unmount(args) {
+	let target = clean_path(args.target);
+	if (!target || match(target, SYSTEM_MOUNTS))
+		return failure('denied', sprintf('%s stays mounted', args.target));
+	if (index(readfile('/proc/mounts') ?? '', ' ' + target + ' ') < 0)
+		return failure('missing', sprintf('Nothing is mounted at %s', target));
+	let result = run(sprintf("umount '%s'", target));
+	return result.code == 0 ? { ok: true } : failure('busy', trim(result.output) || sprintf('%s is in use', target));
+}
+
+function mount_all() {
+	if (!executable('/sbin/block'))
+		return failure('missing', 'Mounting needs the block-mount package');
+	let result = run('/sbin/block mount');
+	return result.code == 0 ? { ok: true } : failure('failed', trim(result.output) || 'block mount failed');
+}
+
 /* --- Terminal ----------------------------------------------------------- */
 
 function terminal() {
@@ -948,6 +1196,9 @@ function stage(ctx, ops) {
 			continue;
 		}
 		if (!(config in touched)) {
+			// Like the uci command, a change creates a missing configuration.
+			if (!access('/etc/config/' + config))
+				writefile('/etc/config/' + config, '');
 			ctx.load(config);
 			push(touched, config);
 		}
@@ -1070,7 +1321,11 @@ function apply(request) {
 	}
 	if ('firewall' in changed)
 		sync_firewall_sets(before.firewall, config_text('firewall'));
+	if ('fstab' in changed)
+		sync_mounts(before.fstab, config_text('fstab'));
 	announce(changed);
+	if ('system' in changed)
+		sync_leds(before.system, config_text('system'));
 	if ('network' in changed)
 		restart_wireguard(before.network, config_text('network'));
 
@@ -1148,7 +1403,11 @@ function undo_redo(direction) {
 		write_config(name, texts[name]);
 	if ('firewall' in target.configs)
 		sync_firewall_sets(expected.firewall, wanted.firewall);
+	if ('fstab' in target.configs)
+		sync_mounts(expected.fstab, wanted.fstab);
 	announce(target.configs);
+	if ('system' in target.configs)
+		sync_leds(expected.system, wanted.system);
 	if ('network' in target.configs)
 		restart_wireguard(expected.network, wanted.network);
 	target.undone = direction == 'undo';
@@ -1256,6 +1515,7 @@ return {
 						upload: executable('/www/cgi-bin/cgi-upload') && executable('/www/cgi-bin/cgi-download'),
 						packages: package_manager(),
 						sysupgrade: executable('/sbin/sysupgrade'),
+						block: executable('/sbin/block'),
 						wireguard: executable('/usr/bin/wg'),
 						upnp: executable('/usr/sbin/miniupnpd'),
 						ddns: executable('/usr/lib/ddns/dynamic_dns_updater.sh'),
@@ -1314,6 +1574,32 @@ return {
 		},
 		reset: {
 			call: () => reset()
+		},
+		users: {
+			call: request => users(request)
+		},
+		certificates: {
+			call: () => certificates()
+		},
+		trusted: {
+			call: () => trusted()
+		},
+		certificate: {
+			args: { action: 'action' },
+			call: request => certificate(request.args)
+		},
+		leds: {
+			call: () => leds()
+		},
+		disks: {
+			call: () => disks()
+		},
+		unmount: {
+			args: { target: 'target' },
+			call: request => unmount(request.args)
+		},
+		mount: {
+			call: () => mount_all()
 		},
 		history: {
 			call: () => history_summary()

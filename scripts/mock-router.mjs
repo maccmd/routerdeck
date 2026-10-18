@@ -6,10 +6,11 @@ import { readFileSync } from 'node:fs';
 
 const captured = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/router.json', import.meta.url), 'utf8'));
 const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/wireless.json', import.meta.url), 'utf8'));
+const capturedCerts = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-25.12/certificates.json', import.meta.url), 'utf8'));
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'ttyd', 'upnpd', 'ddns', 'sqm', 'routerdeck', 'crontab', 'rpcd', 'fstab'];
 // Configurations kept as whole texts rather than UCI sections.
 const FILES = ['crontab'];
 const clone = value => structuredClone(value);
@@ -38,7 +39,17 @@ function initialConfigs() {
  const wireless = clone(capturedWifi['uci:wireless']);
  const system = {
   cfg01e48a: section('system', 'cfg01e48a', 0, { hostname: 'routerdeck-preview', timezone: 'UTC', zonename: 'UTC', log_size: '128', log_proto: 'udp', conloglevel: '8', cronloglevel: '7' }, true),
-  ntp: section('timeserver', 'ntp', 1, { server: ['0.openwrt.pool.ntp.org', '1.openwrt.pool.ntp.org'] })
+  ntp: section('timeserver', 'ntp', 1, { server: ['0.openwrt.pool.ntp.org', '1.openwrt.pool.ntp.org'] }),
+  led_lan: section('led', 'led_lan', 2, { name: 'LAN', sysfs: 'green:lan', trigger: 'netdev', dev: 'br-lan', mode: 'link tx rx' })
+ };
+ const rpcd = {
+  cfg2892bd: section('rpcd', 'cfg2892bd', 0, { socket: '/var/run/ubus/ubus.sock', timeout: '30' }, true),
+  cfg2992bd: section('login', 'cfg2992bd', 1, { username: 'root', password: '$p$root', read: ['*'], write: ['*'] }, true),
+  cfg2a92bd: section('login', 'cfg2a92bd', 2, { username: 'monitor', password: '$6$rdsalt1234567890$DUTEC1arpNLsq6jXu3gbPn1vtknrF.6yOXLrHyzBB0gecckMSvfx7MXTW1f4S6Oweh67UDQCv0etLf98.b8zZ1', read: ['*'], comment: 'Read-only access for the NOC' }, true)
+ };
+ const fstab = {
+  global: section('global', 'global', 0, { anon_swap: '0', anon_mount: '0', auto_swap: '1', auto_mount: '1', delay_root: '5', check_fs: '0' }),
+  cfg2b92bd: section('mount', 'cfg2b92bd', 1, { target: '/mnt/usb', uuid: '6c3a8f5e-0d2b-4b8e-9a51-3f2a7c1d9e04', enabled: '1' }, true)
  };
  // Values captured on OpenWrt 25.12.5.
  const dropbear = { main: section('dropbear', 'main', 0, { enable: '1', PasswordAuth: 'on', RootPasswordAuth: 'on', Port: '22' }) };
@@ -58,7 +69,7 @@ function initialConfigs() {
  const sqm = { eth0: section('queue', 'eth0', 0, { enabled: '1', interface: 'eth0', download: '85000', upload: '10000', qdisc: 'cake', script: 'piece_of_cake.qos', linklayer: 'none' }) };
  const routerdeck = { cfg2692bd: section('netwatch', 'cfg2692bd', 0, { host: '203.0.113.1', interval: '10', timeout: '1', down: 'logger -t netwatch-demo gateway lost', comment: 'Upstream gateway' }, true), cfg2792bd: section('netwatch', 'cfg2792bd', 1, { host: '192.168.88.250', interval: '30', timeout: '1' }, true) };
  const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
- return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab };
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, ttyd, upnpd, ddns, sqm, routerdeck, crontab, rpcd, fstab };
 }
 
 const CLIENTS = [
@@ -176,6 +187,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   const entry = { id: ++historyId, time: Math.floor(now() / 1000), user, description: description || 'Change configuration', configs: changed, before: {}, after: {}, safemode: !!safe, undone: false };
   for (const config of changed) { entry.before[config] = clone(configs[config]); entry.after[config] = clone(next[config]); }
   configs = next;
+  if (changed.includes('fstab')) syncMounts();
   history = [...history.filter(item => !item.undone), entry].slice(-100);
   let released = false;
   if (safe && ++safe.count > 100) { safe = null; released = true; history.forEach(item => { item.safemode = false; }); }
@@ -188,6 +200,7 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   const expected = direction === 'undo' ? target.after : target.before, wanted = direction === 'undo' ? target.before : target.after;
   for (const config of target.configs) if (JSON.stringify(configs[config]) !== JSON.stringify(expected[config])) return { ok: false, error: 'conflict', message: `${config} was changed outside this history, so ${direction} is not possible` };
   for (const config of target.configs) configs[config] = clone(wanted[config]);
+  if (target.configs.includes('fstab')) syncMounts();
   target.undone = direction === 'undo';
   return { ok: true, id: target.id, description: target.description, configs: target.configs };
  }
@@ -647,6 +660,73 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
  }
  let flashing = null;
 
+ /* Users, certificates, LEDs and disks. */
+ const ACL_GROUPS = { 'luci-base': 'Grant access to basic LuCI procedures', 'luci-mod-status': 'Grant access to system information', 'luci-app-firewall': 'Grant access to firewall configuration', 'routerdeck-console': 'RouterDeck Console', unauthenticated: 'Access controls for unauthenticated requests' };
+ const passwordKind = value => !value ? 'none' : value.startsWith('$p$') ? `system:${value.slice(3)}` : /^\$[156]\$/.test(value) ? 'hash' : 'other';
+ const users = user => ({
+  current: user,
+  logins: sectionsOf('rpcd', 'login').map(item => ({ section: item['.name'], username: item.username, password: passwordKind(item.password), read: [].concat(item.read ?? []), write: [].concat(item.write ?? []), comment: item.comment ?? null })),
+  groups: ACL_GROUPS,
+  accounts: [{ name: 'root', uid: 0, shell: '/bin/ash' }, { name: 'daemon', uid: 1, shell: '/bin/false' }, { name: 'network', uid: 101, shell: '/bin/false' }]
+ });
+ let webCert = { data: capturedCerts.web, previous: false };
+ function certificate({ action }) {
+  if (action === 'regenerate') { webCert = { data: capturedCerts.web, previous: true, regenerated: now() }; return { ok: true }; }
+  if (action === 'previous') { if (!webCert.previous) return { ok: false, error: 'missing', message: 'There is no previous certificate' }; webCert = { ...webCert, previous: true }; return { ok: true }; }
+  const cert = readFile('/tmp/routerdeck-cert'), key = readFile('/tmp/routerdeck-key');
+  if (action === 'discard') { fileSystem.delete('/tmp/routerdeck-cert'); fileSystem.delete('/tmp/routerdeck-key'); return { ok: true }; }
+  const text = cert?.toString() ?? '';
+  if (!cert || !text.includes('BEGIN CERTIFICATE')) return { ok: false, error: 'invalid', message: 'Choose a certificate (PEM or DER) and its private key' };
+  const hasKey = /PRIVATE KEY/.test(text) || /PRIVATE KEY/.test(key?.toString() ?? '');
+  if (action === 'check') return { ok: true, data: cert.toString('base64'), key: hasKey };
+  if (!hasKey) return { ok: false, error: 'invalid', message: 'The private key is missing; choose the certificate and its key together' };
+  webCert = { data: cert.toString('base64'), previous: true };
+  return { ok: true };
+ }
+ const LEDS = [
+  { name: 'green:lan', max: 1, triggers: ['none', 'default-on', 'timer', 'heartbeat', 'netdev', 'mmc0'] },
+  { name: 'green:wan', max: 1, triggers: ['none', 'default-on', 'timer', 'heartbeat', 'netdev', 'mmc0'] },
+  { name: 'red:power', max: 1, triggers: ['none', 'default-on', 'timer', 'heartbeat', 'netdev', 'mmc0'] }
+ ];
+ function leds() {
+  const t = Math.floor(seconds());
+  return { leds: LEDS.map(led => {
+   const section = sectionsOf('system', 'led').find(item => item.sysfs === led.name);
+   const trigger = section?.trigger ?? (led.name === 'red:power' ? 'default-on' : 'none');
+   const brightness = trigger === 'default-on' || (trigger === 'none' && section?.default === '1') ? 1 : trigger === 'netdev' || trigger === 'heartbeat' || trigger === 'timer' ? t % 2 : 0;
+   return { name: led.name, brightness, max: led.max, trigger, triggers: led.triggers };
+  }) };
+ }
+ const mounted = new Set(['/mnt/usb']);
+ function disks() {
+  const filesystems = { '/dev/mmcblk0p1': { type: 'ext4', label: 'kernel', uuid: '84173db5-fa99-e35a-95c6-28613cc79ea9' }, '/dev/mmcblk0p2': { type: 'ext4', label: 'rootfs', uuid: 'ff313567-e9f1-5a5d-9895-3ba130b4a864' }, '/dev/sda1': { type: 'ext4', label: 'usb', uuid: '6c3a8f5e-0d2b-4b8e-9a51-3f2a7c1d9e04' }, '/dev/sda2': { type: 'swap', uuid: '2d6a7b1c-90aa-4bd4-8f2e-1c5e0f7a3b62' } };
+  const mounts = [{ source: '/dev/root', target: '/', fstype: 'ext4', options: 'rw,noatime' }, { source: 'tmpfs', target: '/tmp', fstype: 'tmpfs', options: 'rw,nosuid,nodev,noatime' }];
+  for (const item of sectionsOf('fstab', 'mount')) {
+   const path = Object.keys(filesystems).find(name => filesystems[name].uuid === item.uuid || filesystems[name].label === item.label || name === item.device);
+   if (path && item.enabled !== '0' && mounted.has(item.target)) mounts.push({ source: path, target: item.target, fstype: filesystems[path].type, options: 'rw,relatime' });
+  }
+  return {
+   block: true, filesystems, mounts, swaps: [],
+   usage: { '/': { size: 103108608, used: 33333248, available: 69775360 }, '/tmp': { size: 384012288, used: 262144, available: 383750144 }, '/mnt/usb': { size: 31440502784, used: 4718592000, available: 26721910784 } },
+   devices: [
+    { name: 'mmcblk0', size: 31268536320, removable: false, model: '', vendor: '', partitions: [{ name: 'mmcblk0p1', size: 16777216 }, { name: 'mmcblk0p2', size: 109051904 }] },
+    { name: 'sda', size: 32017047552, removable: true, model: 'Flash Drive', vendor: 'Generic', partitions: [{ name: 'sda1', size: 31457280000 }, { name: 'sda2', size: 536870912 }] }
+   ]
+  };
+ }
+ // block-mount mounts what is enabled; removed or disabled mounts are unmounted.
+ function syncMounts() {
+  const enabled = new Set(sectionsOf('fstab', 'mount').filter(item => item.enabled !== '0').map(item => item.target));
+  for (const target of [...mounted]) if (!enabled.has(target)) mounted.delete(target);
+  for (const target of enabled) mounted.add(target);
+ }
+ function unmount({ target }) {
+  if (/^\/(|rom|overlay|tmp|dev|proc|sys)$/.test(target ?? '')) return { ok: false, error: 'denied', message: `${target} stays mounted` };
+  if (!mounted.has(target)) return { ok: false, error: 'missing', message: `Nothing is mounted at ${target}` };
+  mounted.delete(target);
+  return { ok: true };
+ }
+
  function log({ after = 0, lines = 1000 } = {}) {
   const t = Math.floor(seconds()), base = Math.floor(started / 1000) - 600;
   const total = 40 + Math.floor(t / 5);
@@ -752,7 +832,10 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   },
   wol: ({ mac }) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac ?? '') ? { ok: true } : { ok: false, error: 'invalid', message: 'Enter a MAC address such as 00:11:22:33:44:55' },
   packages: () => { settle(); return { manager: 'apk', packages: clone(packageList), upgradable: { ...upgradable } }; },
-  task, files, fileRemove, fileMkdir, writeFile, readFile, restore, firmware,
+  task, files, fileRemove, fileMkdir, writeFile, readFile, restore, firmware, users, certificate, leds, disks, unmount,
+  certificates: () => ({ certificates: [{ path: '/etc/uhttpd.crt', role: 'web', data: webCert.data, key: true, keypath: '/etc/uhttpd.key', previous: webCert.previous }], px5g: true }),
+  trusted: () => ({ path: '/etc/ssl/certs/ca-certificates.crt', data: capturedCerts.trusted }),
+  mount: () => { syncMounts(); return { ok: true }; },
   reset: () => safe ? { ok: false, error: 'safemode', message: 'Leave Safe Mode before resetting the configuration' } : (lastReboot = now(), { ok: true, rebooting: true }),
   crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
   services: () => clone(services), serviceAction,

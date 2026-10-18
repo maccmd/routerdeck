@@ -57,6 +57,11 @@
   running jobs and `run-script` for the scheduler and Netwatch; restore a
   backup after a check, flash firmware the router accepts, reset the
   configuration; add a Files window with uploads and downloads through cgi-io.
+- Add System ▸ Users (rpcd logins with groups; passwords hashed with SHA-512
+  crypt in the browser), Certificates (the web server's, ACME and trusted
+  ones, parsed in the browser; regenerate, import, restore the previous),
+  LEDs and Disks with mount points, swap and block-mount settings that mount
+  and unmount at once.
 
 ### Removed
 

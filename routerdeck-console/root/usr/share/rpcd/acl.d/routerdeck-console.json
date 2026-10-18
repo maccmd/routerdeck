@@ -11,18 +11,18 @@
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
 				"rc": [ "list" ],
-				"routerdeck": [ "conntrack", "crontab", "ddns", "diag", "files", "fw_counters", "history", "info", "log", "neighbors", "netwatch", "packages", "qdisc", "routes", "rules", "terminal", "upnp", "wireguard" ],
+				"routerdeck": [ "certificates", "conntrack", "crontab", "ddns", "diag", "disks", "files", "fw_counters", "history", "info", "leds", "log", "neighbors", "netwatch", "packages", "qdisc", "routes", "rules", "terminal", "trusted", "upnp", "wireguard" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
 			},
-			"uci": [ "ddns", "dhcp", "dropbear", "firewall", "network", "routerdeck", "sqm", "system", "ttyd", "uhttpd", "upnpd", "wireless" ]
+			"uci": [ "ddns", "dhcp", "dropbear", "firewall", "fstab", "network", "routerdeck", "sqm", "system", "ttyd", "uhttpd", "upnpd", "wireless" ]
 		},
 		"write": {
 			"ubus": {
 				"luci": [ "setLocaltime", "setPassword" ],
 				"rc": [ "init" ],
-				"routerdeck": [ "apply", "file_mkdir", "file_remove", "firmware", "redo", "reset", "restore", "safemode", "task", "undo", "wol" ],
+				"routerdeck": [ "apply", "certificate", "file_mkdir", "file_remove", "firmware", "mount", "redo", "reset", "restore", "safemode", "task", "undo", "unmount", "users", "wol" ],
 				"system": [ "reboot" ]
 			},
 			"file": {

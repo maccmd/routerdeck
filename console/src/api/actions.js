@@ -24,7 +24,7 @@ export class ActionError extends Error {
  }
 }
 
-const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch', 'packages', 'jobs'];
+const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo', 'wireguard', 'rules', 'neighbors', 'upnp', 'ddns', 'qdisc', 'netwatch', 'packages', 'jobs', 'users', 'certificates', 'leds', 'disks'];
 const affected = key => key.startsWith('uci:') || AFFECTED.includes(key);
 
 // Services reload about a second after a commit; look again once they have.
@@ -60,15 +60,21 @@ export async function perform(change) {
   await client.call('session', 'destroy', {}, { session: session.ubus_rpc_session }).catch(() => {});
  }
  if (change.upload) {
-  const file = await pickFile(change.upload.accept);
-  if (!file) return null;
-  let shown = -1;
-  await uploadFile(change.upload.path, file, {
-   onProgress: share => {
-    const percent = Math.floor(share * 10) * 10;
-    if (percent !== shown && file.size > 1024 * 1024) { shown = percent; notify(`Uploading ${file.name}: ${percent}%`); }
+  // Several files (a certificate and its key) go where `paths` says.
+  const picked = await pickFile(change.upload.accept, !!change.upload.multiple);
+  if (!picked) return null;
+  const files = [].concat(picked);
+  for (const file of files) {
+   let shown = -1;
+   for (const path of change.upload.paths ? change.upload.paths(file, files) : [change.upload.path]) {
+    await uploadFile(path, file, {
+     onProgress: share => {
+      const percent = Math.floor(share * 10) * 10;
+      if (percent !== shown && file.size > 1024 * 1024) { shown = percent; notify(`Uploading ${file.name}: ${percent}%`); }
+     }
+    }).catch(failure => { throw new ActionError({ message: failure.message }); });
    }
-  }).catch(failure => { throw new ActionError({ message: failure.message }); });
+  }
  }
  if (change.check) {
   const [object, method, args = {}] = change.check;

@@ -3,16 +3,18 @@
 // rpcd ACL decides which paths may be read or written.
 import { client } from '../state.js';
 
-// A file chosen by the user, or null when the dialog is cancelled.
-export function pickFile(accept = '') {
+// A file chosen by the user, or null when the dialog is cancelled; with
+// `multiple`, a list of files.
+export function pickFile(accept = '', multiple = false) {
  return new Promise(resolve => {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
+  input.multiple = multiple;
   input.style.display = 'none';
   let done = false;
   const finish = file => { if (done) return; done = true; input.remove(); resolve(file); };
-  input.addEventListener('change', () => finish(input.files?.[0] ?? null));
+  input.addEventListener('change', () => finish(multiple ? (input.files?.length ? [...input.files] : null) : input.files?.[0] ?? null));
   input.addEventListener('cancel', () => finish(null));
   document.body.append(input);
   input.click();
