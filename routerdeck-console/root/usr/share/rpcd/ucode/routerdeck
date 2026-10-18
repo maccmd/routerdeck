@@ -14,7 +14,7 @@ import { access, readfile, writefile, unlink, open, lsdir, stat, mkdir, rmdir } 
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import {
-	CONFIGS, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
+	CONFIGS, FILES, RUN, SAFE, LAST_ROLLBACK, DELTA, DIAG, HISTORY_ID, SAFE_LIMIT, SAFE_TIMEOUT,
 	ensure_dirs, read_json, write_json, write_text, config_text, write_config, announce,
 	luci_rollback_pending, history_load, history_save, safe_state,
 	safe_heartbeat, safe_clear, safe_restore, log_message
@@ -339,6 +339,66 @@ function diag(args) {
 	return failure('invalid', 'Unknown action');
 }
 
+/* --- Packages and scheduler ------------------------------------------- */
+
+function apk_world() {
+	let world = {};
+	for (let line in split(readfile('/etc/apk/world') ?? '', '\n')) {
+		let name = match(trim(line), /^([^<>=~ ]+)/);
+		if (name)
+			world[name[1]] = true;
+	}
+	return world;
+}
+
+function field_of(text, key) {
+	for (let line in split(text ?? '', '\n'))
+		if (substr(line, 0, length(key) + 2) == key + ': ')
+			return substr(line, length(key) + 2);
+	return null;
+}
+
+// Installed packages from apk's database (25.12) or opkg's status (24.10).
+function packages() {
+	let list = [];
+	let db = readfile('/lib/apk/db/installed');
+	if (db != null) {
+		let world = apk_world();
+		for (let record in split(db, '\n\n')) {
+			let entry = {};
+			for (let line in split(record, '\n')) {
+				if (substr(line, 1, 1) != ':')
+					continue;
+				let key = substr(line, 0, 1), value = substr(line, 2);
+				if (key == 'P') entry.name = value;
+				else if (key == 'V') entry.version = value;
+				else if (key == 'I') entry.size = int(value);
+				else if (key == 'T') entry.description = value;
+			}
+			if (entry.name) {
+				entry.requested = !!world[entry.name];
+				push(list, entry);
+			}
+		}
+		return { manager: 'apk', packages: list };
+	}
+	let status = readfile('/usr/lib/opkg/status');
+	if (status != null) {
+		for (let record in split(status, '\n\n')) {
+			let name = field_of(record, 'Package');
+			if (!name || index(field_of(record, 'Status') ?? '', 'installed') < 0)
+				continue;
+			let control = readfile('/usr/lib/opkg/info/' + name + '.control');
+			push(list, {
+				name, version: field_of(record, 'Version'), requested: index(field_of(record, 'Status') ?? '', 'user') >= 0,
+				size: int(field_of(control, 'Installed-Size') ?? '0') || null, description: field_of(control, 'Description')
+			});
+		}
+		return { manager: 'opkg', packages: list };
+	}
+	return { manager: null, packages: [] };
+}
+
 /* --- Terminal ----------------------------------------------------------- */
 
 function terminal() {
@@ -419,13 +479,23 @@ function valid_value(value) {
 // unset {config,section,options}, delete {config,section},
 // order {config,sections}. A `$ref` names a section added earlier.
 function stage(ctx, ops) {
-	let created = {}, touched = [];
+	let created = {}, touched = [], files = {};
 	let section_of = name => type(name) == 'string' && substr(name, 0, 1) == '$' ? created[name] : name;
 	let exists = (config, name) => type(name) == 'string' && match(name, NAME) && ctx.get(config, name) != null;
 	for (let op in ops) {
 		let config = op?.config;
 		if (!(config in CONFIGS))
 			return failure('invalid', sprintf('Configuration %s cannot be changed here', config));
+		// Plain files are replaced as a whole, and only if nobody changed
+		// them since the client read them.
+		if (FILES[config]) {
+			if (op.op != 'text' || type(op.text) != 'string' || length(op.text) > 65536 || index(op.text, '\0') >= 0)
+				return failure('invalid', sprintf('%s takes a text', config));
+			if (op.expect != null && op.expect != config_text(config))
+				return failure('conflict', sprintf('%s was changed meanwhile; look again and repeat the change', config));
+			files[config] = op.text;
+			continue;
+		}
 		if (!(config in touched)) {
 			ctx.load(config);
 			push(touched, config);
@@ -487,7 +557,7 @@ function stage(ctx, ops) {
 				ctx.set(config, section, key, value);
 		}
 	}
-	return { ok: true, touched, created };
+	return { ok: true, touched, created, files };
 }
 
 function apply(request) {
@@ -514,9 +584,15 @@ function apply(request) {
 		return staged;
 	}
 	let changed = [];
+	for (let name, text in staged.files) {
+		if (text != before[name]) {
+			write_config(name, text);
+			push(changed, name);
+		}
+	}
 	for (let name in staged.touched) {
 		if (!ctx.commit(name)) {
-			for (let restore in staged.touched)
+			for (let restore in [ ...staged.touched, ...changed ])
 				write_config(restore, before[restore]);
 			return failure('commit', sprintf('Could not save %s', name));
 		}
@@ -701,7 +777,11 @@ return {
 						ip_json: executable('/usr/libexec/ip-full') || executable('/usr/libexec/ip-tiny'),
 						log_read: 'log' in objects,
 						wireless: 'network.wireless' in objects,
-						luci_rpc: 'luci-rpc' in objects
+						luci_rpc: 'luci-rpc' in objects,
+						luci_object: 'luci' in objects,
+						rc: 'rc' in objects,
+						cron: executable('/usr/sbin/crond'),
+						backup: executable('/www/cgi-bin/cgi-backup')
 					}
 				};
 			}
@@ -730,6 +810,12 @@ return {
 		},
 		history: {
 			call: () => history_summary()
+		},
+		packages: {
+			call: () => packages()
+		},
+		crontab: {
+			call: () => ({ text: config_text('crontab'), path: FILES.crontab, crond: executable('/usr/sbin/crond') })
 		},
 		apply: {
 			args: { description: 'description', ops: [] },

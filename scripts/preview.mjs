@@ -2,6 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { createMockUbus, MOCK_LOGIN } from './mock-ubus.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -29,6 +30,15 @@ const server = http.createServer(async (req, res) => {
   if (path === '/ubus') {
    if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
    return ubus.handler(req, res);
+  }
+  // cgi-io's backup download: a POSTed session id, a tar.gz back.
+  if (path === '/cgi-bin/cgi-backup' && req.method === 'POST') {
+   let body = '';
+   for await (const chunk of req) body += chunk;
+   const sid = new URLSearchParams(body).get('sessionid');
+   if (!ubus.sessions.has(sid)) { res.writeHead(403); return res.end('Access denied'); }
+   res.writeHead(200, { 'Content-Type': 'application/x-targz', 'Content-Disposition': 'attachment; filename="backup.tar.gz"' });
+   return res.end(gzipSync('etc/config/system: simulated backup of the preview router\n'));
   }
   if (path === '/routerdeck') { res.writeHead(301, { Location: '/routerdeck/' }); return res.end(); }
   let file;

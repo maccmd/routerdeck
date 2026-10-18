@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createCli } from '../cli/engine.js';
 import { SOURCES, useSources } from '../api/sources.js';
-import { apply, undo, redo, safemode, errorText } from '../api/actions.js';
+import { perform, undo, redo, safemode, errorText, notify } from '../api/actions.js';
 import { createJob } from '../api/diag.js';
 import { client, manager, preferences, user, board } from '../state.js';
 import { focusAfterClose, focusWindow } from '../mdi/focus.js';
@@ -43,7 +43,8 @@ export function CliWindow({ win, active }) {
 
  const cli = useMemo(() => createCli({
   load: async keys => Object.fromEntries(await Promise.all(keys.map(async key => [key, await SOURCES[key][0]()]))),
-  apply, undo, redo,
+  apply: perform, undo, redo,
+  reboot: async () => { await client.call('system', 'reboot'); notify('The router is rebooting', 'warning'); },
   createJob: onUpdate => createJob(client, { onUpdate }),
   out: {
    line: (text, tone) => print({ text, tone }),

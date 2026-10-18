@@ -19,6 +19,19 @@ export const MENU = [
   { id: 'ipv6-addresses', label: 'Addresses', window: 'ipv6-addresses' },
   { id: 'ipv6-routes', label: 'Routes', window: 'ipv6-routes' }
  ] },
+ { id: 'system', label: 'System', icon: 'system', children: [
+  { id: 'system-identity', label: 'Identity', window: 'system-identity' },
+  { id: 'system-clock', label: 'Clock', window: 'system-clock' },
+  { id: 'system-ntp', label: 'NTP Client', window: 'system-ntp' },
+  { id: 'system-logging', label: 'Logging', window: 'system-logging' },
+  { id: 'system-password', label: 'Password', window: 'system-password', requires: 'luci_object' },
+  { id: 'system-packages', label: 'Packages', window: 'system-packages' },
+  { id: 'system-scheduler', label: 'Scheduler', window: 'system-scheduler', requires: 'cron' },
+  { id: 'system-startup', label: 'Startup', window: 'system-startup', requires: 'rc' },
+  { id: 'system-resources', label: 'Resources', window: 'system-resources' },
+  { id: 'system-backup', label: 'Backup', window: 'system-backup', requires: 'backup' },
+  { id: 'system-reboot', label: 'Reboot', action: 'reboot' }
+ ] },
  { id: 'log', label: 'Log', icon: 'log', window: 'log' },
  { id: 'tools', label: 'Tools', icon: 'tools', children: [
   { id: 'tool-ping', label: 'Ping', window: 'tool-ping' },

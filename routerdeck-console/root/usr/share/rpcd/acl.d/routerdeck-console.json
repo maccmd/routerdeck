@@ -2,22 +2,28 @@
 	"routerdeck-console": {
 		"description": "RouterDeck Console",
 		"read": {
+			"cgi-io": [ "backup" ],
 			"ubus": {
 				"iwinfo": [ "assoclist", "devices", "info" ],
+				"luci": [ "getTimezones", "getUnixtime" ],
 				"luci-rpc": [ "getDHCPLeases", "getHostHints", "getNetworkDevices", "getWirelessDevices" ],
 				"network": [ "get_proto_handlers" ],
 				"network.device": [ "status" ],
 				"network.interface": [ "dump" ],
-				"routerdeck": [ "conntrack", "diag", "fw_counters", "history", "info", "log", "routes", "terminal" ],
+				"rc": [ "list" ],
+				"routerdeck": [ "conntrack", "crontab", "diag", "fw_counters", "history", "info", "log", "packages", "routes", "terminal" ],
 				"session": [ "destroy" ],
 				"system": [ "board", "info" ],
 				"uci": [ "get" ]
 			},
-			"uci": [ "dhcp", "firewall", "network", "system", "ttyd", "wireless" ]
+			"uci": [ "dhcp", "dropbear", "firewall", "network", "system", "ttyd", "uhttpd", "wireless" ]
 		},
 		"write": {
 			"ubus": {
-				"routerdeck": [ "apply", "redo", "safemode", "undo" ]
+				"luci": [ "setLocaltime", "setPassword" ],
+				"rc": [ "init" ],
+				"routerdeck": [ "apply", "redo", "safemode", "undo" ],
+				"system": [ "reboot" ]
 			}
 		}
 	}

@@ -14,8 +14,10 @@ export const LAST_ROLLBACK = RUN + '/last-rollback.json';
 export const DELTA = RUN + '/uci';
 // Ping and Traceroute jobs, one directory each.
 export const DIAG = RUN + '/diag';
-// Configurations the console edits and Safe Mode protects.
-export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system' ];
+// Configurations the console edits and Safe Mode protects. Most are UCI
+// files in /etc/config; FILES names the others, edited as whole texts.
+export const FILES = { crontab: '/etc/crontabs/root' };
+export const CONFIGS = [ 'network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'crontab' ];
 export const HISTORY_LIMIT = 100;
 export const HISTORY_BYTES = 2 * 1024 * 1024;
 export const SAFE_LIMIT = 100;
@@ -50,11 +52,11 @@ export function write_json(path, value) {
 };
 
 export function config_text(name) {
-	return readfile('/etc/config/' + name) ?? '';
+	return readfile(FILES[name] ?? '/etc/config/' + name) ?? '';
 };
 
 export function write_config(name, text) {
-	return write_text('/etc/config/' + name, text);
+	return write_text(FILES[name] ?? '/etc/config/' + name, text);
 };
 
 // procd reloads the services registered for a changed configuration.
@@ -62,8 +64,13 @@ export function announce(names) {
 	let bus = connect();
 	if (!bus)
 		return false;
-	for (let name in names)
-		bus.call('service', 'event', { type: 'config.change', data: { package: name } });
+	for (let name in names) {
+		// crond has no configuration trigger; it reads its tables at start.
+		if (name == 'crontab')
+			system('/etc/init.d/cron restart >/dev/null 2>&1');
+		else
+			bus.call('service', 'event', { type: 'config.change', data: { package: name } });
+	}
 	bus.disconnect();
 	return true;
 };

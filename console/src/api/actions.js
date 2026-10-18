@@ -2,7 +2,8 @@
 // Changes go through the routerdeck plugin: one call applies, validates,
 // reloads services and records the change for Undo.
 import { signal } from '@preact/signals';
-import { client, board } from '../state.js';
+import { client, board, user } from '../state.js';
+import { NULL_SESSION } from './rpc.js';
 import { poller } from './sources.js';
 
 export const notice = signal(null);
@@ -20,7 +21,7 @@ export class ActionError extends Error {
  }
 }
 
-const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi'];
+const AFFECTED = ['history', 'safemode', 'routes4', 'routes6', 'netdev', 'counters', 'ifaces', 'devices', 'leases', 'wireless', 'wifi', 'crontab', 'rc', 'sysinfo'];
 const affected = key => key.startsWith('uci:') || AFFECTED.includes(key);
 
 // Services reload about a second after a commit; look again once they have.
@@ -28,6 +29,46 @@ function refreshAfterChange() {
  poller.refresh(affected);
  setTimeout(() => poller.refresh(affected), 1500);
  setTimeout(() => poller.refresh(affected), 4000);
+}
+
+// Models describe what to do as data, so they stay testable without a
+// router: `ops` are configuration changes (one Undo step each); `call` and
+// `calls` are other rpcd calls such as starting a service; `verify` checks
+// a password first; `download` fetches a file with this session.
+export async function perform(change) {
+ if (!change) return null;
+ if (change.ops) return apply(change);
+ if (change.verify) {
+  let session;
+  try {
+   session = await client.call('session', 'login', { username: change.verify.username ?? user.value ?? 'root', password: change.verify.password }, { session: NULL_SESSION });
+  } catch (failure) {
+   throw new ActionError({ message: failure.status === 6 ? 'The current password is wrong' : failure.message });
+  }
+  await client.call('session', 'destroy', {}, { session: session.ubus_rpc_session }).catch(() => {});
+ }
+ for (const [object, method, args = {}] of change.calls ?? (change.call ? [change.call] : [])) {
+  // A username left empty means the account of this session.
+  const result = await client.call(object, method, 'username' in args && !args.username ? { ...args, username: user.value ?? 'root' } : args);
+  if (result && (result.ok === false || result.result === false)) throw new ActionError(result);
+ }
+ if (change.download) await download(change.download);
+ poller.refresh(affected);
+ setTimeout(() => poller.refresh(affected), 1500);
+ if (change.notice) notify(change.notice);
+ return { ok: true };
+}
+
+async function download({ url, filename }) {
+ const response = await fetch(url, { method: 'POST', body: new URLSearchParams({ sessionid: client.session, filename }), credentials: 'same-origin' });
+ if (!response.ok) throw new ActionError({ message: `The router answered HTTP ${response.status}` });
+ const link = document.createElement('a');
+ link.href = URL.createObjectURL(await response.blob());
+ link.download = filename;
+ document.body.append(link);
+ link.click();
+ link.remove();
+ setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
 
 export async function apply(change) {

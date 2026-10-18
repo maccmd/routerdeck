@@ -28,7 +28,8 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
    uptime: 1063212 + seconds,
    load: [Math.round((.12 + .05 * wave) * 65536), Math.round(.09 * 65536), Math.round(.07 * 65536)],
    memory: { total: 2048 * 1048576, free: 1310 * 1048576, shared: 9 * 1048576, buffered: 0, available: 1475 * 1048576, cached: 210 * 1048576 },
-   root: { total: 29360128, free: 28154000, used: 1206128, avail: 28154000 },
+   // KiB, as procd reports them.
+   root: { total: 102400, free: 71680, used: 30720, avail: 69632 },
    tmp: { total: 1048576, free: 1040000, used: 8576, avail: 1040000 },
    swap: { total: 0, free: 0 }
   };
@@ -50,16 +51,19 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   system: {
    // The host name follows the simulated system configuration, as on a router.
    board: (args, sid) => [0, { ...board, hostname: Object.values(routerOf(sid)?.uci('system') ?? {}).find(section => section['.type'] === 'system')?.hostname ?? board.hostname }],
-   info: () => [0, systemInfo()]
+   info: () => [0, systemInfo()],
+   reboot: (args, sid) => { routerOf(sid).reboot(); return [0]; }
   },
   routerdeck: {
    info: (args, sid) => [0, {
     version, api: 1, mock: true, user: sessions.get(sid)?.username,
-    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true }
+    capabilities: { luci: false, ttyd: false, nft: true, ip_json: true, log_read: true, luci_rpc: true, wireless: true, luci_object: true, rc: true, cron: true, backup: true }
    }],
    routes: (args, sid) => [0, { routes: args.family === 6 ? routerOf(sid).routes6() : routerOf(sid).routes4() }],
    fw_counters: (args, sid) => [0, routerOf(sid).counters()],
    conntrack: (args, sid) => [0, routerOf(sid).conntrack()],
+   packages: (args, sid) => [0, routerOf(sid).packages()],
+   crontab: (args, sid) => [0, routerOf(sid).crontab()],
    diag: (args, sid) => [0, routerOf(sid).diag(args)],
    log: (args, sid) => [0, routerOf(sid).log(args)],
    terminal: (args, sid) => [0, routerOf(sid).terminal()],
@@ -82,6 +86,16 @@ export function createMockUbus({ now = () => Date.now(), sessionTimeout = 300, l
   },
   'network.device': {
    status: (args, sid) => [0, routerOf(sid).netdev()]
+  },
+  luci: {
+   getTimezones: () => [0, { 'Asia/Vladivostok': { tzstring: '<+10>-10' }, 'Europe/Berlin': { tzstring: 'CET-1CEST,M3.5.0,M10.5.0/3' }, 'Europe/Moscow': { tzstring: 'MSK-3' }, UTC: { tzstring: 'UTC' } }],
+   getUnixtime: () => [0, { result: Math.floor(now() / 1000) }],
+   setLocaltime: (args, sid) => [0, { result: routerOf(sid).setLocaltime(args.localtime) }],
+   setPassword: (args, sid) => [0, { result: routerOf(sid).setPassword(args.username, args.password) }]
+  },
+  rc: {
+   list: (args, sid) => [0, routerOf(sid).services()],
+   init: (args, sid) => routerOf(sid).serviceAction(args.name, args.action) ? [0] : [4]
   },
   network: {
    get_proto_handlers: () => [0, { dhcp: {}, dhcpv6: {}, ppp: {}, pppoe: {}, static: {}, wireguard: {} }]

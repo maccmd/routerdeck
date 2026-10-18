@@ -50,6 +50,11 @@ export const SOURCES = {
  'uci:firewall': [uci('firewall'), 5000],
  'uci:dhcp': [uci('dhcp'), 5000],
  'uci:system': [uci('system'), 5000],
+ // Optional objects: without LuCI or procd's rc, these read as empty.
+ timezones: [() => client.call('luci', 'getTimezones').then(reply => reply ?? null, () => null), 600000],
+ rc: [() => client.call('rc', 'list').then(reply => reply ?? {}, () => ({})), 5000],
+ packages: [() => client.call('routerdeck', 'packages'), 60000],
+ crontab: [() => client.call('routerdeck', 'crontab'), 5000],
  'uci:wireless': [() => client.call('uci', 'get', { config: 'wireless' }).then(reply => reply?.values ?? {}, () => ({})), 5000],
  // netifd's network.wireless rejects uhttpd's session argument; luci-rpc wraps it.
  wireless: [() => client.call('luci-rpc', 'getWirelessDevices').then(reply => reply ?? {}, () => ({})), 3000],

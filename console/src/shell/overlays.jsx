@@ -15,6 +15,11 @@ export function askText({ title, label, value = '', multiline = false, submitLab
  return new Promise(resolve => { prompt.value = { title, label, value, multiline, submitLabel, resolve, opener: document.activeElement }; });
 }
 
+// Resolves true when confirmed, false otherwise.
+export function askConfirm({ title, text, submitLabel = 'OK' }) {
+ return new Promise(resolve => { prompt.value = { title, text, confirm: true, submitLabel, resolve: result => resolve(result !== null), opener: document.activeElement }; });
+}
+
 function ContextMenu({ menu }) {
  const ref = useRef();
  const [position, setPosition] = useState({ left: menu.x, top: menu.y });
@@ -67,11 +72,15 @@ function Prompt({ request }) {
     onSubmit={event => { event.preventDefault(); finish(value); }}
     onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(null); } }}>
     <h2 id="rd-prompt-title">{request.title}</h2>
-    <label class="rd-prompt-field">{request.label}
-     <Field ref={field} value={value} rows={request.multiline ? 4 : undefined} onInput={event => setValue(event.currentTarget.value)} />
-    </label>
+    {request.confirm
+     ? <p class="rd-prompt-text">{request.text}</p>
+     : (
+      <label class="rd-prompt-field">{request.label}
+       <Field ref={field} value={value} rows={request.multiline ? 4 : undefined} onInput={event => setValue(event.currentTarget.value)} />
+      </label>
+     )}
     <div class="rd-prompt-actions">
-     <button type="submit" class="rd-button">{request.submitLabel}</button>
+     <button type="submit" class="rd-button" ref={node => { if (request.confirm && node && !field.current) { field.current = node; node.focus(); } }}>{request.submitLabel}</button>
      <button type="button" class="rd-button" onClick={() => finish(null)}>Cancel</button>
     </div>
    </form>

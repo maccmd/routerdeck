@@ -6,7 +6,7 @@ import { Icon } from '../shell/icons.jsx';
 import { Grid } from './Grid.jsx';
 import { MODELS } from '../model/index.js';
 import { useSources } from '../api/sources.js';
-import { apply, errorText } from '../api/actions.js';
+import { perform, errorText } from '../api/actions.js';
 import { openItem } from '../windows/open.js';
 import { openContextMenu, askText } from '../shell/overlays.jsx';
 import { preferences, manager } from '../state.js';
@@ -61,7 +61,7 @@ function TabList({ model, active, kind }) {
   setBusy(true);
   setError(null);
   try {
-   await apply(typeof change === 'function' ? change() : change);
+   await perform(typeof change === 'function' ? change() : change);
   } catch (failure) {
    setError(errorText(failure));
   } finally {

@@ -9,7 +9,9 @@ const capturedWifi = JSON.parse(readFileSync(new URL('../tests/fixtures/openwrt-
 const NAME = /^[A-Za-z0-9_]+$/;
 const TYPE = /^[A-Za-z0-9_-]+$/;
 const PORTS = /^!?\s*\d{1,5}([-:]\d{1,5})?(\s+\d{1,5}([-:]\d{1,5})?)*$/;
-const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system'];
+const CONFIGS = ['network', 'firewall', 'dhcp', 'wireless', 'system', 'dropbear', 'uhttpd', 'crontab'];
+// Configurations kept as whole texts rather than UCI sections.
+const FILES = ['crontab'];
 const clone = value => structuredClone(value);
 const section = (type, name, index, values, anonymous = false) => ({ '.anonymous': anonymous, '.type': type, '.name': name, '.index': index, ...values });
 
@@ -29,8 +31,15 @@ function initialConfigs() {
  dhcp.cfg1992bd = section('cname', 'cfg1992bd', 22, { cname: 'files.lan', target: 'nas.lan', comment: 'Shared folders' }, true);
  network.pppoe_backup = section('interface', 'pppoe_backup', 25, { proto: 'pppoe', device: 'eth1', username: 'customer@isp.example', password: 'not-a-real-password', service: 'internet', disabled: '1', comment: 'Backup line' });
  const wireless = clone(capturedWifi['uci:wireless']);
- const system = { cfg01e48a: section('system', 'cfg01e48a', 0, { hostname: 'routerdeck-preview', timezone: 'UTC', zonename: 'UTC' }, true) };
- return { network, firewall, dhcp, wireless, system };
+ const system = {
+  cfg01e48a: section('system', 'cfg01e48a', 0, { hostname: 'routerdeck-preview', timezone: 'UTC', zonename: 'UTC', log_size: '128', log_proto: 'udp', conloglevel: '8', cronloglevel: '7' }, true),
+  ntp: section('timeserver', 'ntp', 1, { server: ['0.openwrt.pool.ntp.org', '1.openwrt.pool.ntp.org'] })
+ };
+ // Values captured on OpenWrt 25.12.5.
+ const dropbear = { main: section('dropbear', 'main', 0, { enable: '1', PasswordAuth: 'on', RootPasswordAuth: 'on', Port: '22' }) };
+ const uhttpd = { main: section('uhttpd', 'main', 0, { listen_http: ['0.0.0.0:80', '[::]:80'], listen_https: ['0.0.0.0:443', '[::]:443'], redirect_https: '0', home: '/www', rfc1918_filter: '1', cert: '/etc/uhttpd.crt', key: '/etc/uhttpd.key', ubus_prefix: '/ubus' }) };
+ const crontab = '# Reload WiFi at night\n0 4 * * * wifi reload\n#*/30 * * * * /usr/bin/check-wan\n';
+ return { network, firewall, dhcp, wireless, system, dropbear, uhttpd, crontab };
 }
 
 const CLIENTS = [
@@ -56,7 +65,7 @@ const SEVERITIES = ['emerg', 'alert', 'crit', 'err', 'warning', 'notice', 'info'
 export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } = {}) {
  let configs = initialConfigs();
  let history = [], historyId = 0, serial = 0x14;
- let safe = null, lastRollback = null;
+ let safe = null, lastRollback = null, lastReboot = null;
  const started = now();
  const seconds = () => Math.max(0, (now() - started) / 1000);
  const text = config => JSON.stringify(configs[config]);
@@ -78,6 +87,12 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   for (const op of ops) {
    const values = next[op?.config];
    if (!CONFIGS.includes(op?.config)) return { ok: false, error: 'invalid', message: `Configuration ${op?.config} cannot be changed here` };
+   if (FILES.includes(op.config)) {
+    if (op.op !== 'text' || typeof op.text !== 'string') return { ok: false, error: 'invalid', message: `${op.config} takes a text` };
+    if (op.expect != null && op.expect !== next[op.config]) return { ok: false, error: 'conflict', message: `${op.config} was changed meanwhile; look again and repeat the change` };
+    next[op.config] = op.text;
+    continue;
+   }
    for (const key of Object.keys(op.values ?? {})) if (!NAME.test(key)) return { ok: false, error: 'invalid', message: `Invalid value for ${key}` };
    if (op.op === 'add') {
     if (typeof op.type !== 'string' || !TYPE.test(op.type)) return { ok: false, error: 'invalid', message: 'Invalid section type' };
@@ -455,9 +470,35 @@ export function createMockRouter({ now = () => Date.now(), safeTimeout = 120 } =
   return { undo: summary(history.filter(entry => !entry.undone).at(-1)), redo: summary(history.find(entry => entry.undone)), entries: history.map(entry => ({ ...summary(entry), configs: entry.configs, undone: entry.undone, safemode: entry.safemode })) };
  }
 
+ // procd's rc list, captured on OpenWrt 25.12.5 and trimmed.
+ const services = {
+  boot: { start: 10, stop: 90, enabled: true }, system: { start: 10, enabled: true, running: true }, log: { start: 12, stop: 89, enabled: true, running: true },
+  rpcd: { start: 12, enabled: true, running: true }, dnsmasq: { start: 19, enabled: true, running: true }, dropbear: { start: 19, stop: 50, enabled: true, running: true },
+  firewall: { start: 19, enabled: true, running: false }, network: { start: 20, stop: 90, enabled: true, running: true }, odhcpd: { start: 35, stop: 85, enabled: true, running: true },
+  cron: { start: 50, enabled: true, running: true }, uhttpd: { start: 50, enabled: true, running: true }, sysntpd: { start: 98, enabled: true, running: true }, ttyd: { start: 99, enabled: false, running: false }
+ };
+ function serviceAction(name, action) {
+  const service = services[name];
+  if (!service || !['start', 'stop', 'restart', 'reload', 'enable', 'disable'].includes(action)) return false;
+  if (action === 'enable' || action === 'disable') service.enabled = action === 'enable';
+  else if (service.running !== undefined) service.running = action !== 'stop';
+  return true;
+ }
+ const PACKAGES = [['base-files', '1701-r29097', 'Base filesystem for OpenWrt', 52000, true], ['busybox', '1.37.0-r6', 'Core utilities for embedded Linux', 312000, true], ['dnsmasq', '2.91-r1', 'DNS and DHCP server', 248000, true],
+  ['dropbear', '2025.88-r1', 'Small SSH2 client/server', 205000, true], ['firewall4', '2025.10.10-r1', 'nftables based firewall', 58000, true], ['kmod-wireguard', '6.12.94-r1', 'WireGuard secure network tunnel', 61000, false],
+  ['libubox20260213', '2026.02.13-r1', 'Basic utility library', 41000, false], ['luci', '26.288', 'LuCI interface', 0, true], ['odhcpd-ipv6only', '2025.11.20-r1', 'DHCPv6 and RA server', 98000, true],
+  ['routerdeck-console', '0.1.0-r1', 'RouterDeck Console', 260000, true], ['rpcd', '2025.11.30-r1', 'OpenWrt ubus RPC backend server', 42000, true], ['uhttpd', '2025.10.03-r1', 'Tiny HTTP server', 52000, true]];
+ let localOffset = 0;
+
  return {
   watchdog,
-  uci: config => configs[config] ? clone(configs[config]) : null,
+  packages: () => ({ manager: 'apk', packages: PACKAGES.map(([name, version, description, size, requested]) => ({ name, version, description, size, requested })) }),
+  crontab: () => ({ text: configs.crontab, path: '/etc/crontabs/root', crond: true }),
+  services: () => clone(services), serviceAction,
+  setLocaltime: seconds => { localOffset = seconds * 1000 - now(); return true; },
+  setPassword: (username, password) => typeof password === 'string' && password.length > 0,
+  reboot: () => { lastReboot = now(); },
+  uci: config => configs[config] && !FILES.includes(config) ? clone(configs[config]) : null,
   devices, netdev, ifaces, routes4, routes6, counters, conntrack, log, leases, wirelessStatus, wifi, diag,
   history: history_, apply, undo: () => step('undo'), redo: () => step('redo'), safemode,
   terminal: () => ({ installed: false, running: false, port: 7681, ssl: false, interface: '@lan', url_override: null })

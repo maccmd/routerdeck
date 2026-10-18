@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { MODELS } from '../model/index.js';
 import { ValidationError } from '../model/common.js';
 import { useSources } from '../api/sources.js';
-import { apply, errorText } from '../api/actions.js';
+import { perform, errorText } from '../api/actions.js';
 import { askText } from '../shell/overlays.jsx';
 import { openItem } from '../windows/open.js';
 import { manager } from '../state.js';
@@ -87,7 +87,7 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
   setBusy(true);
   setMessage(null);
   try {
-   const result = await apply(change);
+   const result = await perform(change);
    after?.(result);
   } catch (failure) {
    setMessage(errorText(failure));
@@ -109,7 +109,7 @@ export function ItemForm({ model, rowKey = null, params = {}, active, idPrefix, 
    return;
   }
   if (!change) return closeAfter ? onClose() : setEdits({});
-  const first = change.ops.find(op => op.op === 'add');
+  const first = change.ops?.find(op => op.op === 'add');
   if (creating && first && !first.ref) first.ref = '$new';
   await run(change, result => {
    setErrors({});

@@ -9,7 +9,6 @@ import { MODELS } from '../model/index.js';
 import { ValidationError } from '../model/common.js';
 import { tokenize, quote, propertyName, pick, CliError } from './parser.js';
 import { pingView, traceView, ms } from '../model/tools.js';
-import { uptime, load as loadAverage, bytes } from '../lib/format.js';
 
 const TREE = {
  interface: { model: 'interfaces', export: false, children: {
@@ -31,7 +30,11 @@ const TREE = {
   'dhcp-server': { children: { binding: { model: 'dhcp6-bindings' } } }
  } },
  log: { model: 'log' },
- system: { children: { identity: { model: 'system-identity' }, resource: { special: 'resource' }, history: { special: 'history' } } },
+ system: { commands: ['reboot'], children: {
+  identity: { model: 'system-identity' }, clock: { model: 'system-clock' }, ntp: { children: { client: { model: 'system-ntp' } } },
+  logging: { model: 'system-logging' }, package: { model: 'system-packages' }, scheduler: { model: 'system-scheduler' },
+  startup: { model: 'system-startup' }, resource: { model: 'system-resources' }, history: { special: 'history' }
+ } },
  tool: { commands: ['traceroute', 'torch'] }
 };
 
@@ -49,7 +52,7 @@ const HELP = {
  print: 'Print the items', find: 'Show the numbers of matching items', add: 'Create a new item', set: 'Change item properties', remove: 'Remove items',
  enable: 'Enable items', disable: 'Disable items', comment: 'Set the comment of items', export: 'Print the configuration as commands',
  ping: 'Send ICMP echo requests', traceroute: 'Trace the route to a host', torch: 'Watch traffic per connection (opens a window)',
- undo: 'Undo the last change', redo: 'Redo the last undone change', quit: 'Close this terminal', '..': 'Go up one level', '/': 'Go to the top level'
+ undo: 'Undo the last change', redo: 'Redo the last undone change', quit: 'Close this terminal', reboot: 'Reboot the router (asks first)', '..': 'Go up one level', '/': 'Go to the top level'
 };
 const YES = ['yes', 'true', 'on', '1'], NO = ['no', 'false', 'off', '0'];
 
@@ -199,12 +202,14 @@ const flagsHeader = model => {
  return entries.length ? `Flags: ${entries.map(([flag, text]) => `${flag} - ${text.toUpperCase()}`).join('; ')}` : null;
 };
 
-export function createCli({ load, apply, undo, redo, createJob, out, user = 'root', identity = () => 'router', safe = () => false, openWindow = () => {}, close = () => {}, now = () => new Date() }) {
+export function createCli({ load, apply, undo, redo, createJob, out, user = 'root', identity = () => 'router', safe = () => false, openWindow = () => {}, close = () => {}, reboot = async () => {}, now = () => new Date() }) {
  let current = ROOT;
  let running = null;
+ // A question such as "Reboot, yes? [y/N]:" waits for the next line.
+ let pending = null;
  const numbering = new Map();
 
- const prompt = () => `[${user}@${identity()}] ${safe() ? '<SAFE> ' : ''}${current === ROOT ? '' : pathOf(current)}> `;
+ const prompt = () => pending ? pending.question : `[${user}@${identity()}] ${safe() ? '<SAFE> ' : ''}${current === ROOT ? '' : pathOf(current)}> `;
 
  // Leading words name a menu (absolute with "/", "..", abbreviations
  // allowed); the first word that is not a menu is the command.
@@ -357,17 +362,6 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
  }
 
  async function printSpecial(node) {
-  if (node.special === 'resource') {
-   const data = await load(['sysinfo', 'board']);
-   const info = data.sysinfo ?? {}, board = data.board ?? {};
-   const props = [
-    ['uptime', uptime(info.uptime)], ['version', board.release?.description ?? ''], ['board-name', board.model ?? ''], ['architecture', board.release?.target ?? board.system ?? ''],
-    ['cpu-load', info.load ? loadAverage(info.load[0]) : ''], ['free-memory', bytes(info.memory?.available ?? info.memory?.free)], ['total-memory', bytes(info.memory?.total)],
-    ['free-storage', bytes(info.root?.avail)], ['total-storage', bytes(info.root?.total)]
-   ];
-   for (const [name, value] of props) out.line(`${name.padStart(14)}: ${value}`);
-   return;
-  }
   const data = await load(['history']);
   const entries = data.history?.entries ?? [];
   out.line('Flags: U - UNDONE; S - SAFE MODE');
@@ -564,6 +558,9 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
    case 'ping': return ping(args);
    case 'traceroute': return traceroute(args);
    case 'torch': openWindow('tool-torch'); return out.line('Torch is open in its own window');
+   case 'reboot':
+    pending = { question: 'Reboot, yes? [y/N]: ', action: async () => { await reboot(); out.line('system will reboot shortly'); } };
+    return;
    case 'undo': return undo();
    case 'redo': return redo();
    case 'quit': return close();
@@ -572,6 +569,12 @@ export function createCli({ load, apply, undo, redo, createJob, out, user = 'roo
  }
 
  async function run(line) {
+  if (pending) {
+   const { action } = pending;
+   pending = null;
+   if (/^y(es)?$/i.test(line.trim())) return action();
+   return out.line('action cancelled');
+  }
   const words = tokenize(line);
   if (!words.length) return;
   const { node, command, args, moved } = resolve(words);

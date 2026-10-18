@@ -172,6 +172,32 @@ test('ping prints each reply and a summary; traceroute redraws its table', async
  assert.deepEqual(await run('/ping'), ['ping needs an address']);
 });
 
+test('System menus print and change settings; reboot asks first', async () => {
+ const data = routerData();
+ data['uci:system'].cfg01e48a.cronloglevel = '8';
+ data.crontab = { text: '# Nightly\n0 4 * * * wifi reload\n', crond: true };
+ data.sysinfo = { uptime: 61, load: [0, 0, 0], memory: { total: 1048576, available: 524288 }, root: { total: 1024, avail: 512 } };
+ data.rc = { cron: { start: 50, enabled: true, running: true } };
+ let rebooted = 0;
+ const { cli, run, applied } = session({ data });
+ assert.deepEqual(await run('/system scheduler print'), ['Flags: X - DISABLED', 'Columns: NAME, SCHEDULE, WHEN, COMMAND', ' # NAME     SCHEDULE   WHEN            COMMAND', ' 0 Nightly  0 4 * * *  daily at 04:00  wifi reload']);
+ await run('/system scheduler add schedule="*/5 * * * *" command="logger tick" name=tick');
+ assert.equal(applied[0].ops[0].text, '# Nightly\n0 4 * * * wifi reload\n# tick\n*/5 * * * * logger tick\n');
+ await run('/system startup restart cron');
+ assert.deepEqual(applied[1].calls, [['rc', 'init', { name: 'cron', action: 'restart' }]]);
+ assert.ok((await run('/system resource print')).includes('        uptime: 00:01:01'));
+ // Reboot is confirmed on the next line, as in RouterOS.
+ const confirmed = createCli({ load: async keys => Object.fromEntries(keys.map(key => [key, data[key]])), out: { line: () => {} }, reboot: async () => { rebooted++; } });
+ await confirmed.run('/system reboot');
+ assert.equal(confirmed.prompt(), 'Reboot, yes? [y/N]: ');
+ await confirmed.run('n');
+ assert.equal(rebooted, 0);
+ await confirmed.run('/system reboot');
+ await confirmed.run('y');
+ assert.equal(rebooted, 1);
+ assert.equal(cli.prompt(), '[root@OpenWrt] > ');
+});
+
 test('Tab completes menus, commands, properties and values; ? lists them', async () => {
  const { cli } = session();
  assert.deepEqual(await cli.complete('/ip ad'), { text: '/ip address ', options: [] });
